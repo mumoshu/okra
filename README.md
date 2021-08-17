@@ -2,13 +2,20 @@
 
 `hotswap` helps you hot-swap Kubernetes clusters while keeping your microservices up and running.
 
-## Introduction
+The author thought that hot-swapping a cluster while keeping your apps running looks like hot-swaping a drive while keeping a server running, hence the name `hotswap`.
 
-It's named `hotswap` because the author thought that hot-swapping a cluster while keeping your apps distributed across clusters running looks very much like hot-swapping a server in a rack while keeping your apps running across other servers in a rack.
+## Goals
 
-`hotswap` eases managing ephemeral clusters. If you've been using ephemeral Kubernetes clusters and employed blue-green or canary deployments for zero-downtime cluster updates, you might have suffered from a lot of manual steps required to do it in practice. `hotswap` is intended to automate all those steps.
+`hotswap` eases managing ephemeral Kubernetes clusters.
 
-In the best scenario, you provision one or more new clusters, update a `System` custom resource provided by `hotswap` to include the new clusters, and can have some coffee. It will run various steps to safely update all the related K8s and IaaS resources, like gradually migrating workloads from the old clusters to the new clusters.
+If you've been using ephemeral Kubernetes clusters and employed blue-green or canary deployments for zero-downtime cluster updates, you might have suffered from a lot of manual steps required. `hotswap` is intended to automate all those steps.
+
+In the best scenario, a system update looks like the below.
+
+- You provision one or more new clusters, and update a `System` custom resource provided by `hotswap` to include the new clusters
+- Have some coffee, and `hotswap` will run various steps to safely update all the related K8s and IaaS resources. The job includes gradually migrating workloads from the old clusters to the new clusters, by updating ArgoCD configs and AWS ALB settings.
+
+## Project Status and Scope
 
 `hotswap` currently works on AWS only, but the design and implementation is generic enough to be capable of adding more IaaS supports. Any contribution around that is welcomed.
 
