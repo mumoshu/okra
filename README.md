@@ -25,7 +25,7 @@ A kubearray `System` is composed of `clusters` and `applications`.
 
 A `cluster` is a Kubernetes cluster that runs your container workloads.
 
-An `application` is one of your application that is deployed onto `clusters` by `argocd`. The `application` traffic is routed via an `alb` in front of `clusters`.
+An `application` is deployed onto `clusters` by `ArgoCD`. The traffic to the `application` is routed via an [AWS ALB](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/introduction.html) in front of `clusters`.
 
 ```
 kind: System
@@ -47,7 +47,7 @@ It detects new `clusters` in an updated `System` spec, then detects affected `ap
 
 - `ArgoCD` is a continuous deployment system that embraces GitOps to sync desired state stored in Git with the Kubernetes cluster's state. `kubearray` integrates with `ArgoCD` and especially its `ApplicationSet` controller for applicaation deployments.
   - `kubearray` relies on ArgoCD `ApplicationSet` controller's [`Cluster Generator` feature](https://argocd-applicationset.readthedocs.io/en/stable/Generators/#label-selector)
-- `Flagger` and `Argo Rollouts` enables canary deployments of apps running across pods. `kubearray` enables canary deployments of clusters running on IaaS.
+- [Flagger](https://flagger.app/) and [Argo Rollouts](https://github.com/argoproj/argo-rollouts) enables canary deployments of apps running across pods. `kubearray` enables canary deployments of clusters running on IaaS.
 - [argocd-clusterset](https://github.com/mumoshu/argocd-clusterset) auto-discovers EKS clusters and turns those into ArgoCD cluster secrets. `kubearray` does the same with its `ArgoCDCluster` CRD and `argocdcluster-controller`.
 - [terraform-provider-eksctl's courier_alb resource](https://github.com/mumoshu/terraform-provider-eksctl/tree/master/pkg/courier) enables canary deployments on target groups behind AWS ALB with metrics analysis for Datadog and CloudWatc metrics. `kubearray` does the same with it's `ALB` CRD and `alb-controller`.
 
