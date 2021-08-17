@@ -8,7 +8,7 @@
 
 If you've been using ephemeral Kubernetes clusters and employed blue-green or canary deployments for zero-downtime cluster updates, you might have suffered from a lot of manual steps required. `kubearray` is intended to automate all those steps.
 
-In the best scenario, a system update looks like the below.
+In the best scenario, a system update with `kubearray` looks like the below.
 
 - You provision one or more new clusters, and update a `System` custom resource provided by `kubearray` to include the new clusters
 - Have some coffee, and `kubearray` will run various steps to safely update all the related K8s and IaaS resources. The job includes gradually migrating workloads from the old clusters to the new clusters, by updating ArgoCD configs and AWS ALB settings.
