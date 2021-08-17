@@ -248,6 +248,11 @@ On each reconcilation loop, `hotswaps` runs the following steps:
 ### `ArgoCDCluster`
 
 ```
+apiVersion: hotswap.mumoshu.github.io/v1alpha1
+kind: System
+metadata:
+  name: mysystem
+spec:
 clusters:
 - name: mycluster-web-1-v2
   eks:
@@ -255,6 +260,7 @@ clusters:
   # by default this fetches the EKS cluster named mycluster-v2
   labels:
     role: web
+# snip
 ```
 
 translates to:
@@ -262,7 +268,7 @@ translates to:
 ```
 kind: ArgoCDCluster
 metadata:
-  name: someprefix-mycluster-web-1-v2
+  name: mysystem-mycluster-web-1-v2
   labels:
     role: web
 spec:
@@ -273,11 +279,32 @@ status:
   phase: Running
 ```
 
-`argocdcluster-controller` reconciles this resource, by calling AWS EKS GetCluster API, build a Kubernetes client config from it, and then writes it into a ArgoCD cluster secret named `mycluster-web-1-v2`.
+`argocdcluster-controller` reconciles this resource, by calling AWS EKS GetCluster API, build a Kubernetes client config from it, and then writes it into a ArgoCD cluster secret named `mysystem-mycluster-web-1-v2`.
 
 ### `ArgoCDApplicationDeployment`
 
 ```
+apiVersion: hotswap.mumoshu.github.io/v1alpha1
+kind: System
+metadata:
+  name: mysystem
+spec:
+  clusters:
+  - name: mycluster-web-1-v2
+    eks:
+      #clusterName: mycluster-web-1-v2
+    # by default this fetches the EKS cluster named mycluster-v2
+    # This waits until the cluster is ready and running
+    requireReady: true
+    # or allow notready for 60m...
+    #readyTimeout: 60m
+    labels:
+      role: web
+  - name: mycluster-web-2-v2
+    eks: {}
+    labels:
+      role: web
+# snip
   - name: web
     # selector is required when there are two or more clusters
     clusterSelector:
@@ -302,11 +329,11 @@ With the above, `system-controller` fetches all the cluster secrets that have co
 ```
 kind: ArgoCDApplicationDeployment
 metadata:
-  name: someprefix-web
+  name: mysystem-web
 spec:
   clusterNames:
-  - mycluster-web-1-v2
-  - mycluster-web-2-v2
+  - mysystem-mycluster-web-1-v2
+  - mysystem-mycluster-web-2-v2
   clusterSecret:
     name: web-clusters
     labels:
@@ -344,7 +371,9 @@ translates to the below if queries are different across clusters:
 ```
 kind: Check
 metadata:
-  name: someprefix-mycluster-web-1-v2-dd-somehash
+  name: mysystem-dd-mycluster-web-1-v2
+  annotations:
+    analysis-hash: somehash
 spec:
   analysis
     interval: 10s
@@ -352,6 +381,11 @@ spec:
       ... mycluster-web-1-v2
       ... listenerARN1 ... targetGroupARN1
     max: 0.1
+status:
+  analysis:
+    observedHash: somehash
+    results:
+    - ...
 ```
 
 or the below if the queries are equivalent across clusters:
@@ -359,11 +393,24 @@ or the below if the queries are equivalent across clusters:
 ```
 kind: Check
 metadata:
-  name: someprefix-dd-somehash
+  name: mysystem-dd
+  annotations:
+    analysis-hash: somehash
 spec:
   analysis
     interval: 10s
     query: |
       ... v2 ...
     max: 0.1
+status:
+  lastPassed: true
+  lastRunTime: iso3339datetimestring
+  analysis:
+    observedHash: somehash
+    results:
+    - ...
 ```
+
+`check.status.lastPassed` becemes `true` when and only when the last check passed. `lastRunTime` contains the time when the last check ran.
+
+`status.observedHash=somehash` equals to the value in `analysis-hash: somehash` after sync. You can leverage this to make sure that the last check was run with the latest query.
