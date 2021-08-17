@@ -71,6 +71,8 @@ metadata:
 spec:
   clusters:
   - name: mycluster-web-1-v2
+    eks:
+      #clusterName: mycluster-web-1-v2
     # by default this fetches the EKS cluster named mycluster-v2
     # This waits until the cluster is ready and running
     requireReady: true
@@ -78,16 +80,19 @@ spec:
     #readyTimeout: 60m
     labels:
       role: web
-   - name: mycluster-web-2-v2
-     labels:
-       role: web
-   - name: mycluster-api-v1
-     labels:
-       role: api
-       targetGroupARN: ...someARN...
-   - name: mycluster-backgroundjobs-v1
-     labels:
-       role: backgroundjobs
+  - name: mycluster-web-2-v2
+    eks: {}
+    labels:
+      role: web
+  - name: mycluster-api-v1
+    eks: {}
+    labels:
+      role: api
+      targetGroupARN: ...someARN...
+  - name: mycluster-backgroundjobs-v1
+    eks: {}
+    labels:
+      role: backgroundjobs
   applications:
   - name: web
     # selector is required when there are two or more clusters
@@ -230,3 +235,113 @@ On each reconcilation loop, `hotswaps` runs the following steps:
     - Phase=Completing: Run postchecks and record the results. Requeue if processed.
     = Phase=Error: If checks or prechecks failed, it will either stop or rollback. For rollback, it reads old ClusterSet revisions from the cluster.
     = Phase=Completed: Does nothing.
+
+## Implementation
+
+`hotswap` provides the following Kubernetes CRDs:
+
+- `System`
+- `ArgoCDCluster`
+- `ArgoCDApplicationDeployment`
+- `Check`
+
+### `ArgoCDCluster`
+
+```
+clusters:
+- name: mycluster-web-1-v2
+  eks:
+  #  clusterName: mycluster-web-1-v2
+  # by default this fetches the EKS cluster named mycluster-v2
+  labels:
+    role: web
+```
+
+translates to:
+
+```
+kind: ArgoCDCluster
+metadata:
+  name: someprefix-mycluster-web-1-v2
+  labels:
+    role: web
+spec:
+  eks:
+    clusterName: mycluster-web-1-v2
+status:
+  ready: true
+  phase: Running
+```
+
+`argocdcluster-controller` reconciles this resource, by calling AWS EKS GetCluster API, build a Kubernetes client config from it, and then writes it into a ArgoCD cluster secret named `mycluster-web-1-v2`.
+
+### `ArgoCDApplicationDeployment`
+
+```
+kind: ArgoCDApplicationDeployment
+metadata:
+  name: someprefix-appname
+spec:
+  clusterNames:
+  - foo
+  - bar
+  clusterSecret:
+    name: api-clusters
+    labels:
+      myservice-role: api
+      # secret-type label is automatically added.
+      #argocd.argoproj.io/secret-type: cluster
+  applicationSet:
+    selector: ...
+  updateStrategy:
+    type: CreateBeforeDelete
+status:
+  ready: true
+  phase: Updating
+```
+
+With this configuration, `argocdapplicationdeployment-controller` fetches two cluster secrets `foo` and `bar`, concatenate the two into a cluster secret named `api-secrets`.
+
+ArgoCD's `ApplicationSet` controller detects the updated `api-secrets` and installs `Application`s onto the clusters according to `ApplicationSet`s.
+
+The update strategy of `CreateBeforeDelete` results in creating updating the cluster secret to add new clusters first. It deletes the old clusters from the cluster secret only after all the `ApplicationSet` matched the `applicationSet.selector` completed deployments to the new clusters.
+
+### `Check`
+
+```
+checks:
+- name: dd
+  analysis
+    query: |
+      ... {{.Vars.eksClusterName}}
+      ... {{.Vars.albListenerARN}} ...{{.Vars.targetGroupARN}}
+```
+
+translates to the below if queries are different across clusters:
+
+```
+kind: Check
+metadata:
+  name: someprefix-mycluster-web-1-v2-dd-somehash
+spec:
+  analysis
+    interval: 10s
+    query: |
+      ... mycluster-web-1-v2
+      ... listenerARN1 ... targetGroupARN1
+    max: 0.1
+```
+
+or the below if the queries are equivalent across clusters:
+
+```
+kind: Check
+metadata:
+  name: someprefix-dd-somehash
+spec:
+  analysis
+    interval: 10s
+    query: |
+      ... v2 ...
+    max: 0.1
+```
