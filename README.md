@@ -45,11 +45,13 @@ spec:
 
 It detects new `clusters` in an updated `System` spec, then detects affected `applications`, live migrate traffic by hot-swaping old clusters serving the affected `applications` with the new clusters, while keepining the `applications` up and running.
 
-## Relationship with Other Projects
+## Related Projects
 
 - `ArgoCD` is a continuous deployment system that embraces GitOps to sync desired state stored in Git with the Kubernetes cluster's state. `hotswap` integrates with `ArgoCD` and especially its `ApplicationSet` controller for applicaation deployments.
-  - `hotswap` relies on `ApplicationSet` controller's [`Cluster Generator` feature](https://argocd-applicationset.readthedocs.io/en/stable/Generators/#label-selector)
-- `Flagger` and `Argo Rollouts` provides similar functionality, but they mostly work for Kubernetes pods, whereas `hotswap` works for Kubernetes clusters.
+  - `hotswap` relies on ArgoCD `ApplicationSet` controller's [`Cluster Generator` feature](https://argocd-applicationset.readthedocs.io/en/stable/Generators/#label-selector)
+- `Flagger` and `Argo Rollouts` enables canary deployments of apps running across pods. `hotswap` enables canary deployments of clusters running on IaaS.
+- [argocd-clusterset](https://github.com/mumoshu/argocd-clusterset) auto-discovers EKS clusters and turns those into ArgoCD cluster secrets. `hotswap` does the same with its `ArgoCDCluster` CRD and `argocdcluster-controller`.
+- [terraform-provider-eksctl's courier_alb resource](https://github.com/mumoshu/terraform-provider-eksctl/tree/master/pkg/courier) enables canary deployments on target groups behind AWS ALB with metrics analysis for Datadog and CloudWatc metrics. `hotswap` does the same with it's `ALB` CRD and `alb-controller`.
 
 ## Usage
 
@@ -246,6 +248,7 @@ On each reconcilation loop, `hotswaps` runs the following steps:
 - `System`
 - `ArgoCDCluster`
 - `ArgoCDApplicationDeployment`
+- `ALB`
 - `Check`
 
 ### `ArgoCDCluster`
@@ -355,6 +358,70 @@ With this configuration, `argocdapplicationdeployment-controller` fetches two cl
 ArgoCD's `ApplicationSet` controller detects the updated `mysystem-web-mysystem-mycluster-web-1-v2` and `mysystem-web-mysystem-mycluster-web-2-v2`, then installs `Application`s onto the clusters according to `ApplicationSet`s.
 
 The update strategy of `CreateBeforeDelete` results in creating updating the cluster secret to add new clusters first. It deletes the old clusters from the cluster secret only after all the `ApplicationSet` matched the `applicationSet.selector` completed deployments to the new clusters.
+
+### `ALB`
+
+```
+apiVersion: hotswap.mumoshu.github.io/v1alpha1
+kind: System
+metadata:
+  name: mysystem
+spec:
+  clusters:
+  - name: mycluster-web-1-v2
+    eks:
+      #clusterName: mycluster-web-1-v2
+    # by default this fetches the EKS cluster named mycluster-v2
+    # This waits until the cluster is ready and running
+    requireReady: true
+    # or allow notready for 60m...
+    #readyTimeout: 60m
+    labels:
+      role: web
+  - name: mycluster-web-2-v2
+    eks: {}
+    labels:
+      role: web
+# snip
+- name: web
+  clusterSelector:
+    role: web
+  argocd:
+    # ...
+  alb:
+    listenerARN: ...
+    forwardConfig:
+      priority: 10
+      targetGroup:
+        argetgroupBindingSelector: svc=web
+        #arnFromLabel: targetGroupARN
+    updateStrategy: #canary
+      stepWeight: 10
+      totalWeight: 100
+```
+
+translates to:
+
+```
+kind: ALB
+metadata:
+  name: mysystem-web
+spec:
+  listenerARN: ...
+  forwardConfig:
+    priority: 10
+    targetGroups:
+    - arn: ...
+      weight: ...
+    - arn: ...
+      weight: ...
+```
+
+`system-controller` uses either `targetgroupBindingSelector: svc=web` or `arnFromLabel: targetGroupARN` that is available in the embedded `alb` spec to determine the ARN of the target group for each cluster, and places those ARNs under `ALB.spec.forwardConfig.targetGroups`.
+
+Then, `system-controller` gradually updates `alb.spec.forwardConfig.targetGroups[].weight` by `system.spec.applications[].alb.updateStrategy.stepWeight` on each interval.
+
+`alb-controller` reconciles `ALB` resources by calling AWS APIs to update ALB Listener Rules.
 
 ### `Check`
 
