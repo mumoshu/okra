@@ -278,17 +278,39 @@ status:
 ### `ArgoCDApplicationDeployment`
 
 ```
+  - name: web
+    # selector is required when there are two or more clusters
+    clusterSelector:
+      role: web
+    # This automatically waits for related applicationset(s) to be reconciled
+    argocd:
+      clusterSecret:
+        name: web-clusters
+        labels:
+          myservice-role: web
+          # secret-type label is automatically added.
+          #argocd.argoproj.io/secret-type: cluster
+      applicationSet:
+        name: ...
+        #selector: ...
+      updateStrategy:
+        type: CreateBeforeDelete
+```
+
+With the above, `system-controller` fetches all the cluster secrets that have corresponding items in `system.spec.clusters` by a label selector of `role=web`. The controller then puts cluster secret names into `argocdapplication.spec.clusterNames`, so that the `ArgoCDApplicationDeployment` would become:
+
+```
 kind: ArgoCDApplicationDeployment
 metadata:
-  name: someprefix-appname
+  name: someprefix-web
 spec:
   clusterNames:
-  - foo
-  - bar
+  - mycluster-web-1-v2
+  - mycluster-web-2-v2
   clusterSecret:
-    name: api-clusters
+    name: web-clusters
     labels:
-      myservice-role: api
+      myservice-role: web
       # secret-type label is automatically added.
       #argocd.argoproj.io/secret-type: cluster
   applicationSet:
@@ -300,9 +322,9 @@ status:
   phase: Updating
 ```
 
-With this configuration, `argocdapplicationdeployment-controller` fetches two cluster secrets `foo` and `bar`, concatenate the two into a cluster secret named `api-secrets`.
+With this configuration, `argocdapplicationdeployment-controller` fetches two cluster secrets `mycluster-web-1-v2` and `mycluster-web-2-v2`, concatenate the two into a cluster secret named `web-clusters`. The cluster secret is lableled `myservice-role: web` for selection by `ApplicationSet`.
 
-ArgoCD's `ApplicationSet` controller detects the updated `api-secrets` and installs `Application`s onto the clusters according to `ApplicationSet`s.
+ArgoCD's `ApplicationSet` controller detects the updated `web-clusters` and installs `Application`s onto the clusters according to `ApplicationSet`s.
 
 The update strategy of `CreateBeforeDelete` results in creating updating the cluster secret to add new clusters first. It deletes the old clusters from the cluster secret only after all the `ApplicationSet` matched the `applicationSet.selector` completed deployments to the new clusters.
 
