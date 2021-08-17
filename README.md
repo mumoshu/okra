@@ -1,29 +1,31 @@
-# hotswap
+# kubearray
 
-`hotswap` helps you hot-swap Kubernetes clusters while keeping your microservices up and running.
+`kubearray` helps you hot-swap Kubernetes clusters while keeping your microservices up and running.
 
-The author thought that hot-swapping a cluster while keeping your apps running looks like hot-swaping a drive while keeping a server running, hence the name `hotswap`.
+The author thought that hot-swapping a cluster while keeping your apps running looks like hot-swaping a drive while keeping a server running.
+
+We tend to call a cluster of storages where each storage drive can be hot-swapped a "storage array", hence calling a tool to build a cluster of clusters where each cluster can be hot-swapped "kubearray".
 
 ## Goals
 
-`hotswap` eases managing ephemeral Kubernetes clusters.
+`kubearray` eases managing ephemeral Kubernetes clusters.
 
-If you've been using ephemeral Kubernetes clusters and employed blue-green or canary deployments for zero-downtime cluster updates, you might have suffered from a lot of manual steps required. `hotswap` is intended to automate all those steps.
+If you've been using ephemeral Kubernetes clusters and employed blue-green or canary deployments for zero-downtime cluster updates, you might have suffered from a lot of manual steps required. `kubearray` is intended to automate all those steps.
 
 In the best scenario, a system update looks like the below.
 
-- You provision one or more new clusters, and update a `System` custom resource provided by `hotswap` to include the new clusters
-- Have some coffee, and `hotswap` will run various steps to safely update all the related K8s and IaaS resources. The job includes gradually migrating workloads from the old clusters to the new clusters, by updating ArgoCD configs and AWS ALB settings.
+- You provision one or more new clusters, and update a `System` custom resource provided by `kubearray` to include the new clusters
+- Have some coffee, and `kubearray` will run various steps to safely update all the related K8s and IaaS resources. The job includes gradually migrating workloads from the old clusters to the new clusters, by updating ArgoCD configs and AWS ALB settings.
 
 ## Project Status and Scope
 
-`hotswap` currently works on AWS only, but the design and implementation is generic enough to be capable of adding more IaaS supports. Any contribution around that is welcomed.
+`kubearray` currently works on AWS only, but the design and implementation is generic enough to be capable of adding more IaaS supports. Any contribution around that is welcomed.
 
 ## Concepts
 
-`hotswap` updates your `System`.
+`kubearray` updates your `System`.
 
-A `System` is composed of`clusters` and `applications`.
+A kubearray `System` is composed of `clusters` and `applications`.
 
 A `cluster` is a Kubernetes cluster that runs your container workloads.
 
@@ -41,17 +43,17 @@ spec:
     alb: ...
 ```
 
-`hotswap` acts as an application traffic migrator.
+`kubearray` acts as an application traffic migrator.
 
 It detects new `clusters` in an updated `System` spec, then detects affected `applications`, live migrate traffic by hot-swaping old clusters serving the affected `applications` with the new clusters, while keepining the `applications` up and running.
 
 ## Related Projects
 
-- `ArgoCD` is a continuous deployment system that embraces GitOps to sync desired state stored in Git with the Kubernetes cluster's state. `hotswap` integrates with `ArgoCD` and especially its `ApplicationSet` controller for applicaation deployments.
-  - `hotswap` relies on ArgoCD `ApplicationSet` controller's [`Cluster Generator` feature](https://argocd-applicationset.readthedocs.io/en/stable/Generators/#label-selector)
-- `Flagger` and `Argo Rollouts` enables canary deployments of apps running across pods. `hotswap` enables canary deployments of clusters running on IaaS.
-- [argocd-clusterset](https://github.com/mumoshu/argocd-clusterset) auto-discovers EKS clusters and turns those into ArgoCD cluster secrets. `hotswap` does the same with its `ArgoCDCluster` CRD and `argocdcluster-controller`.
-- [terraform-provider-eksctl's courier_alb resource](https://github.com/mumoshu/terraform-provider-eksctl/tree/master/pkg/courier) enables canary deployments on target groups behind AWS ALB with metrics analysis for Datadog and CloudWatc metrics. `hotswap` does the same with it's `ALB` CRD and `alb-controller`.
+- `ArgoCD` is a continuous deployment system that embraces GitOps to sync desired state stored in Git with the Kubernetes cluster's state. `kubearray` integrates with `ArgoCD` and especially its `ApplicationSet` controller for applicaation deployments.
+  - `kubearray` relies on ArgoCD `ApplicationSet` controller's [`Cluster Generator` feature](https://argocd-applicationset.readthedocs.io/en/stable/Generators/#label-selector)
+- `Flagger` and `Argo Rollouts` enables canary deployments of apps running across pods. `kubearray` enables canary deployments of clusters running on IaaS.
+- [argocd-clusterset](https://github.com/mumoshu/argocd-clusterset) auto-discovers EKS clusters and turns those into ArgoCD cluster secrets. `kubearray` does the same with its `ArgoCDCluster` CRD and `argocdcluster-controller`.
+- [terraform-provider-eksctl's courier_alb resource](https://github.com/mumoshu/terraform-provider-eksctl/tree/master/pkg/courier) enables canary deployments on target groups behind AWS ALB with metrics analysis for Datadog and CloudWatc metrics. `kubearray` does the same with it's `ALB` CRD and `alb-controller`.
 
 ## Usage
 
@@ -60,19 +62,19 @@ It is inteded to be deployed onto a "control-plane" cluster to where you usually
 It is opinionated in a way that it requires you to use:
 
 - ALB(s) to load-balance traffic "across" clusters
-  - You bring your own ALB, Listener, and Target Groups, and tell `hotswap` Listener ID and Target Group ARNs and Weights. If you use `aws-loadbalaner-controller`, you can use `TargetGroupBinding` only.
+  - You bring your own ALB, Listener, and Target Groups, and tell `kubearray` the Listener ID, Target Group ARNs and Weights. If you use `aws-loadbalaner-controller`, you can use `TargetGroupBinding` only.
 - Uses ArgoCD ApplicationSets to deploy your applications onto cluster(s)
 
 In the future, it may add support for using Route 53 Weighted Routing instead of ALB and using another application deployment tool other than ArgoCD.
 
 It supports complex configurations like below:
 
-- One or more clusters per service=ALB listener rule. Imagine a case that you need a pair of clusters to serve your service. `hotswap` is able to canary-deploy the pair of clusters, by periodically updating two target group weights as a whole.
+- One or more clusters per service=ALB listener rule. Imagine a case that you need a pair of clusters to serve your service. `kubearray` is able to canary-deploy the pair of clusters, by periodically updating two target group weights as a whole.
 
 A complex example of System would look like the below:
 
 ```
-apiVersion: hotswap.mumoshu.github.io/v1alpha1
+apiVersion: kubearray.mumoshu.github.io/v1alpha1
 kind: System
 metadata:
   name: mysystem
@@ -119,7 +121,7 @@ spec:
       updateStrategy:
         type: CreateBeforeDelete
     # There's implicit ordering between argocdClusterSecret and alb updates.
-    # hotswap will firstly update argocdClusterSecret to add new clusters,
+    # kubearray will firstly update argocdClusterSecret to add new clusters,
     # and then updates ALB so that it routes more traffic to new clusters.
     # Once all the checks passed, it finally removes old clusters from
     # argocdClusterSecret.
@@ -216,7 +218,7 @@ status:
 
 ## How it works
 
-`hotswap` waits for all the clusters are ready, and starts migrating workloads only after that. This ensures that there will be no traffic flapping. In the example above, `hotswap` starts migration only after all the clusters:
+`kubearray` waits for all the clusters are ready, and starts migrating workloads only after that. This ensures that there will be no traffic flapping. In the example above, `kubearray` starts migration only after all the clusters:
 
 - mycluster-web-1-v2
 - mycluster-web-2-v2
@@ -229,7 +231,7 @@ If it were to auto-discover e.g. `mycluster-web-1-v2` and start migrating worklo
 
 Forcing to wait for all the relevant clusters to become ready before migrating workloads makes the whole story simple and deterministic. This is also a good practice to minimize downtime migrating aapps like Kafka consumers across clusters, because it may result in less resharding.
 
-On each reconcilation loop, `hotswaps` runs the following steps:
+On each reconcilation loop, `kubearray` runs the following steps:
 
 - Iterate over `clusters` and ensure all the clusters are ready
 - Iterate over `applications` and ensure all the services have desired clusters
@@ -243,7 +245,7 @@ On each reconcilation loop, `hotswaps` runs the following steps:
 
 ## Implementation
 
-`hotswap` provides the following Kubernetes CRDs:
+`kubearray` provides the following Kubernetes CRDs:
 
 - `System`
 - `ArgoCDCluster`
@@ -254,7 +256,7 @@ On each reconcilation loop, `hotswaps` runs the following steps:
 ### `ArgoCDCluster`
 
 ```
-apiVersion: hotswap.mumoshu.github.io/v1alpha1
+apiVersion: kubearray.mumoshu.github.io/v1alpha1
 kind: System
 metadata:
   name: mysystem
@@ -290,7 +292,7 @@ status:
 ### `ArgoCDApplicationDeployment`
 
 ```
-apiVersion: hotswap.mumoshu.github.io/v1alpha1
+apiVersion: kubearray.mumoshu.github.io/v1alpha1
 kind: System
 metadata:
   name: mysystem
@@ -362,7 +364,7 @@ The update strategy of `CreateBeforeDelete` results in creating updating the clu
 ### `ALB`
 
 ```
-apiVersion: hotswap.mumoshu.github.io/v1alpha1
+apiVersion: kubearray.mumoshu.github.io/v1alpha1
 kind: System
 metadata:
   name: mysystem
