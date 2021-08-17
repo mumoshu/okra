@@ -2,10 +2,6 @@
 
 `kubearray` helps you hot-swap Kubernetes clusters while keeping your microservices up and running.
 
-The author thought that hot-swapping a cluster while keeping your apps running looks like hot-swaping a drive while keeping a server running.
-
-We tend to call a cluster of storages where each storage drive can be hot-swapped a "storage array", hence calling a tool to build a cluster of clusters where each cluster can be hot-swapped "kubearray".
-
 ## Goals
 
 `kubearray` eases managing ephemeral Kubernetes clusters.
@@ -495,3 +491,9 @@ status:
 `check.status.lastPassed` becemes `true` when and only when the last check passed. `lastRunTime` contains the time when the last check ran.
 
 `status.observedHash=somehash` equals to the value in `analysis-hash: somehash` after sync. You can leverage this to make sure that the last check was run with the latest query.
+
+## Why is it named "kubearray"?
+
+The author thought that hot-swapping a cluster while keeping your apps running looks like hot-swaping a drive while keeping a server running.
+
+We tend to call a cluster of storages where each storage drive can be hot-swapped a "storage array", hence calling a tool to build a cluster of clusters where each cluster can be hot-swapped "kubearray" seemed like a good idea.
