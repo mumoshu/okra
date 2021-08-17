@@ -45,6 +45,12 @@ spec:
 
 It detects new `clusters` in an updated `System` spec, then detects affected `applications`, live migrate traffic by hot-swaping old clusters serving the affected `applications` with the new clusters, while keepining the `applications` up and running.
 
+## Relationship with Other Projects
+
+- `ArgoCD` is a continuous deployment system that embraces GitOps to sync desired state stored in Git with the Kubernetes cluster's state. `hotswap` integrates with `ArgoCD` and especially its `ApplicationSet` controller for applicaation deployments.
+  - `hotswap` relies on `ApplicationSet` controller's [`Cluster Generator` feature](https://argocd-applicationset.readthedocs.io/en/stable/Generators/#label-selector)
+- `Flagger` and `Argo Rollouts` provides similar functionality, but they mostly work for Kubernetes pods, whereas `hotswap` works for Kubernetes clusters.
+
 ## Usage
 
 It is inteded to be deployed onto a "control-plane" cluster to where you usually deploy applications like ArgoCD.
@@ -101,7 +107,6 @@ spec:
     # This automatically waits for related applicationset(s) to be reconciled
     argocd:
       clusterSecret:
-        name: web-clusters
         labels:
           myservice-role: web
           # secret-type label is automatically added.
@@ -141,7 +146,6 @@ spec:
       role: api
     argocd:
       clusterSecret:
-        name: api-clusters
         labels:
           myservice-role: api
           # secret-type label is automatically added.
@@ -175,7 +179,6 @@ spec:
     # This result in removing old cluster secrets.
     argocd:
       clusterSecret:
-        name: backgroundjobs-clusters
         lables:
           myservice-role: backgroundjobs
       applicationSet:
@@ -312,7 +315,6 @@ spec:
     # This automatically waits for related applicationset(s) to be reconciled
     argocd:
       clusterSecret:
-        name: web-clusters
         labels:
           myservice-role: web
           # secret-type label is automatically added.
@@ -335,7 +337,6 @@ spec:
   - mysystem-mycluster-web-1-v2
   - mysystem-mycluster-web-2-v2
   clusterSecret:
-    name: web-clusters
     labels:
       myservice-role: web
       # secret-type label is automatically added.
@@ -349,9 +350,9 @@ status:
   phase: Updating
 ```
 
-With this configuration, `argocdapplicationdeployment-controller` fetches two cluster secrets `mycluster-web-1-v2` and `mycluster-web-2-v2`, concatenate the two into a cluster secret named `web-clusters`. The cluster secret is lableled `myservice-role: web` for selection by `ApplicationSet`.
+With this configuration, `argocdapplicationdeployment-controller` fetches two cluster secrets `mycluster-web-1-v2` and `mycluster-web-2-v2`, concatenate the two into a cluster secrets named `mysystem-web-mysystem-mycluster-web-1-v2` and `mysystem-web-mysystem-mycluster-web-2-v2`. The cluster secrets ared lableled `myservice-role: web` for selection by `ApplicationSet`.
 
-ArgoCD's `ApplicationSet` controller detects the updated `web-clusters` and installs `Application`s onto the clusters according to `ApplicationSet`s.
+ArgoCD's `ApplicationSet` controller detects the updated `mysystem-web-mysystem-mycluster-web-1-v2` and `mysystem-web-mysystem-mycluster-web-2-v2`, then installs `Application`s onto the clusters according to `ApplicationSet`s.
 
 The update strategy of `CreateBeforeDelete` results in creating updating the cluster secret to add new clusters first. It deletes the old clusters from the cluster secret only after all the `ApplicationSet` matched the `applicationSet.selector` completed deployments to the new clusters.
 
