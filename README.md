@@ -23,6 +23,22 @@ In the best scenario, a system update with `kubearray` looks like the below.
 
 `kubearray` currently works on AWS only, but the design and implementation is generic enough to be capable of adding more IaaS supports. Any contribution around that is welcomed.
 
+## How does it work?
+
+The kubearray `System` controller will manage the traffic shift across clusters.
+
+In the beginning, a user gives each `System` a set of settings to discover EKS clusters, and a set of application details, where each application detail contains the information for the relevant ALB, ArgoCD resources, and metrics.
+
+The controller periodically discovers EKS clusters. It then compares the target groups associated to the ALB with the clusters that the controller knows. If there's any difference, it starts updating the ALB.
+
+When `kubearray` updates a system to add a new set of clusters to the ALB, it modifies the ALB forward config so that the ALB gradually shifts traffic to the target groups for the cluster set.
+
+### Comparison with Flagger and Argo Rollouts
+
+Unlike `Argo Rollouts` and `Flagger`, in `kubearray` there is no notions of "active" and "preview" services for a blue-green deployment, or "canary" and "stable" services for a canary deployment.
+
+Each set of clusters should be assigned dedicated target groups and applications. In other words, there's one or more target groups per each cluster for an application. `kubespray` basically does a canary deployment, where the old set of target groups is consdidered "stable" and the new set of target groups is considered "canary".
+
 ## Concepts
 
 `kubearray` updates your `System`.
