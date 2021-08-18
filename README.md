@@ -1,6 +1,12 @@
 # kubearray
 
-`kubearray` helps you hot-swap Kubernetes clusters while keeping your microservices up and running.
+`kubearray` is a [Kubernetes controller](https://kubernetes.io/docs/concepts/architecture/controller/) and a set of [CRDs](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/) which provide advanced cluster rollout capabilities, such as canary deployment of clusters.
+
+`kubearray` manages **kubearray systems** for you. A `kubearray` system is like a storage array but for Kubernetes clusters.
+
+You hot-swap a disk in a storage array while running. Similarly, with `kubearray` you hot-swap a cluster in a system while running.
+
+`kubearray` (currently) integrates with AWS ALB for traffic shaping, CloudWatch Metrics and Datadog for canary analysis.
 
 ## Goals
 
@@ -45,9 +51,9 @@ It detects new `clusters` in an updated `System` spec, then detects affected `ap
 
 ## Related Projects
 
-- `ArgoCD` is a continuous deployment system that embraces GitOps to sync desired state stored in Git with the Kubernetes cluster's state. `kubearray` integrates with `ArgoCD` and especially its `ApplicationSet` controller for applicaation deployments.
+- [ArgoCD](https://argoproj.github.io/argo-cd/) is a continuous deployment system that embraces GitOps to sync desired state stored in Git with the Kubernetes cluster's state. `kubearray` integrates with `ArgoCD` and especially its `ApplicationSet` controller for applicaation deployments.
   - `kubearray` relies on ArgoCD `ApplicationSet` controller's [`Cluster Generator` feature](https://argocd-applicationset.readthedocs.io/en/stable/Generators/#label-selector)
-- [Flagger](https://flagger.app/) and [Argo Rollouts](https://github.com/argoproj/argo-rollouts) enables canary deployments of apps running across pods. `kubearray` enables canary deployments of clusters running on IaaS.
+- [Flagger](https://flagger.app/) and [Argo Rollouts](https://argoproj.github.io/argo-rollouts/) enables canary deployments of apps running across pods. `kubearray` enables canary deployments of clusters running on IaaS.
 - [argocd-clusterset](https://github.com/mumoshu/argocd-clusterset) auto-discovers EKS clusters and turns those into ArgoCD cluster secrets. `kubearray` does the same with its `ArgoCDCluster` CRD and `argocdcluster-controller`.
 - [terraform-provider-eksctl's courier_alb resource](https://github.com/mumoshu/terraform-provider-eksctl/tree/master/pkg/courier) enables canary deployments on target groups behind AWS ALB with metrics analysis for Datadog and CloudWatc metrics. `kubearray` does the same with it's `ALB` CRD and `alb-controller`.
 
