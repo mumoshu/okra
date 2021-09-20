@@ -1,0 +1,245 @@
+CRDs:
+
+- [AWSApplicationLoadBalancerTargetDeployment](#awsapplicationloadbalancertargetdeployment)
+- [AWSNetworkLoadBalancerTargetDeployment](#awsnetworkloadbalancertargetdeployment)
+- [ClusterSet](#clusterset)
+- [AWSTargetGroupSet](#awstargetgroupset)
+- [AWSTargetGroup](#awstargetgroup)
+
+# AWSApplicationLoadBalancerTargetDeployment
+
+`AWSApplicationLoadBalancerTargetDeployment` represents a set of AWS target groups that is routed via an existing AWS Application Load Balancer.
+
+The controller reconciles this resource to discover a the latest set of target groups to where the traffic is routed by the Application Load Balancer.
+
+The only supported `updateStrategy` is `Canary`, which gradually migrates traffic while running analysis.
+
+```yaml
+kind: AWSApplicationLoadBalancerTargetDeployment
+metadata:
+  name: web
+spec:
+  listenerARN: ...
+  selector:
+    matchLabels:
+      role: web
+  # replicas: N
+  # versionedBy:
+  #   label: version
+  #   creationTimestamp: {}
+  updateStrategy:
+    type: Canary
+    # Canary uses the set of target groups whose labels contains
+    # `selector.MatchLabels` and the size of the set is equal or greater than N.
+    # When there are two or more such sets exist, the one that has the largest version is used.
+    canary:
+      steps:
+      - stepWeight: 10
+      - analysis:
+          templates:
+          - templateName: success-rate
+          args:
+          - name: service-name
+            value: guestbook-svc.default.svc.cluster.local
+```
+
+# AWSNetworkLoadBalancerTargetDeployment
+
+`AWSNetworkLoadBalancerTargetDeployment` represents the latest AWS target group that is exposed to the client with an AWS Network Load Balancer.
+
+Unlike it's Application counterpart, this resource has support for BlueGreen strategy only due to the limitation of Network Load Balancer.
+
+```yaml
+kind: AWSNetworkLoadBalancerTargetDeployment
+spec:
+  listenerARN: ...
+  selector:
+    matchLabels:
+      role: web
+  # versionedBy:
+  #   label: version
+  #   creationTimestamp: {}
+  updateStrategy:
+    type: BlueGreen
+    // Unlike Canary, BlueGreen uses the latest target group that matches the
+    // selector. This is due to the 
+    blueGreen:
+      steps:
+      - analysis:
+          templates:
+          - templateName: success-rate
+          args:
+          - name: service-name
+            value: guestbook-svc.default.svc.cluster.local
+      - promote: {}
+```
+
+# ClusterSet
+
+`ClusterSet` auto-discovers EKS clusters and generates ArgoCD cluster secrets.
+
+```yaml
+kind: ClusterSet
+metadata:
+  name: cart
+spec:
+  generators:
+  - eks:
+      tags:
+        role: "web"
+  template:
+    metadata:
+      labels:
+        role: "{{role}}"
+```
+
+Assuming there were two EKS clusters whose tags contained `role=web`, the following two cluster secrets are generated:
+
+```yaml
+kind: Secret
+metadata:
+  name: cart-web1
+  labels:
+    role: web
+    argocd.argoproj.io/secret-type: cluster
+  ownerReferences:
+  - apiVersion: $API_VERSION
+    blockOwnerDeletion: true
+    controller: true
+    kind: ClusterSet
+    name: cart
+```
+
+```yaml
+kind: Secret
+metadata:
+  name: cart-web2
+  labels:
+    role: web
+    argocd.argoproj.io/secret-type: cluster
+  ownerReferences:
+  - apiVersion: $API_VERSION
+    blockOwnerDeletion: true
+    controller: true
+    kind: ClusterSet
+    name: cart
+```
+
+# AWSTargetGroupSet
+
+`AWSTargetGroupSet` auto-discovers clusters and generates `AWSTargetGroup`.
+
+This resources has support for the `eks` generator that generates a cluster secret per discoverered EKS cluster.
+
+The below example would result in creating one AWSTargetGroup per cluster and each group consists of all the nodes whose label matches `type=node`.
+
+```yaml
+kind: AWSTargetGroupSet
+metadata:
+  name: web
+spec:
+  generators:
+  - eks:
+      tags:
+        role: "web"
+  template:
+    metadata:
+      name: web-"{{.eks.clusterName}}"
+      labels:
+        role: "{{.eks.tags.role}}"
+    spec:
+        targets:
+        - name: specificnodeincluster
+          clusterName: "{{.eks.clusterName}}"
+          nodeSelector:
+            type: node
+          port: 8080
+```
+
+# AWSTargetGroup
+
+`AWSTargetGroup` represents a desired state of an existing or dynamically generated AWS target group.
+
+The controller reconciles an `AWSTargetGroup` resource by discovering the target clusters, then discovers pods and nodes in the clusters as targets, and finally creates or updates a target group to register the discovered targets.
+
+Usually, this resource is managed by `AWSTargetGroupSet`. One that is managed by `AWSTargetGroupSet` would look like the below:
+
+```yaml
+kind: AWSTargetGroup
+metadata:
+  name: web-"{{.eks.clusterName}}"
+  labels:
+    role: web
+  ownerReferences:
+  - apiVersion: $API_VERSION
+    blockOwnerDeletion: true
+    controller: true
+    kind: AWSTargetGroupSet
+    name: web
+spec:
+  targetGroupARN: $TARGET_GROUP_ARN
+  targets:
+  - name: specificnodesincluster
+    clusterName: $EKS_CLUSTER_NAME_1
+    nodeSelector:
+      labels:
+        type: node
+    port: 8080
+status:
+  targets:
+  - name: specificnodesincluster
+    ids:
+    - $INSTANCE_ID_1
+    - $INSTANCE_ID_2
+    port: 8080
+```
+
+Another use-case of this resource is to let the controller register any targets as you like. This is useful when you're managing a single target group in e.g. Terraform or CloudFormation and you'd like to register all the nodes in multiple clusters to the target group.
+
+```yaml
+kind: AWSTargetGroup
+metadata:
+  labels:
+    role: web
+spec:
+  targetGroupARN: $TARGET_GROUP_ARN
+  targets:
+  - name: specificips
+    ids:
+    - $IP_ADDRESS
+    port: 8080
+  - name: specificnodeincluster
+    clusterName: $EKS_CLUSTER_NAME_1
+    nodeName: $NODE_NAME
+    port: 8080
+  - name: nodesincluster
+    clusterSelector:
+      matchLabels:
+        role: web
+    nodeSelector:
+      matchLabels:
+        role: web
+    port: 8080
+status:
+  targetGroupARN: $TARGET_GROUP_ARN
+  targets:
+  - name: specificip
+    port: 8080
+    ids:
+    - $IP_ADDRESS
+  - name: specificnodeincluster
+    port: 8080
+    ids:
+    - $CLUSTER_1_NODE_INSTANCE_ID
+  - name: nodesincluster
+    port: 8080
+    clusters:
+    - webcluster1
+    - webcluster2
+    ids:
+    - $WEBCLUSTER1_NODE_INSTANCE_1_ID
+    - $WEBCLUSTER2_NODE_INSTANCE_1_ID
+```
+
+Although this is very similar to [aws-load-balancer-controller 's TargetGroupBinding](https://kubernetes-sigs.github.io/aws-load-balancer-controller/v2.1/guide/targetgroupbinding/targetgroupbinding/), it's different in that `AWSTargetGroup` does not require an existing target group and it can also build a multi-cluster target group.
+
