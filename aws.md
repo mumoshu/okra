@@ -1,12 +1,12 @@
 CRDs:
 
-- [AWSApplicationLoadBalancerTargetDeployment](#awsapplicationloadbalancertargetdeployment)
-- [AWSNetworkLoadBalancerTargetDeployment](#awsnetworkloadbalancertargetdeployment)
+- [Cell with AWSApplicationLoadBalancer](#cell-with-awsapplicationloadbalancer)
+- [Cell with AWSNetworkLoadBalancer](#cell-with-awsnetworkloadbalancer)
 - [ClusterSet](#clusterset)
 - [AWSTargetGroupSet](#awstargetgroupset)
 - [AWSTargetGroup](#awstargetgroup)
 
-# AWSApplicationLoadBalancerTargetDeployment
+# Cell with AWSApplicationLoadBalancer
 
 `AWSApplicationLoadBalancerTargetDeployment` represents a set of AWS target groups that is routed via an existing AWS Application Load Balancer.
 
@@ -15,14 +15,17 @@ The controller reconciles this resource to discover a the latest set of target g
 The only supported `updateStrategy` is `Canary`, which gradually migrates traffic while running analysis.
 
 ```yaml
-kind: AWSApplicationLoadBalancerTargetDeployment
+kind: Cell
 metadata:
   name: web
 spec:
-  listenerARN: ...
-  selector:
-    matchLabels:
-      role: web
+  ingress:
+    type: AWSApplicationLoadBalancer
+    awsApplicationLoadBalancer:
+      listenerARN: ...
+      targetGroupSelector:
+        matchLabels:
+          role: web
   # replicas: N
   # versionedBy:
   #   label: version
@@ -33,8 +36,18 @@ spec:
     # `selector.MatchLabels` and the size of the set is equal or greater than N.
     # When there are two or more such sets exist, the one that has the largest version is used.
     canary:
+      # See https://argoproj.github.io/argo-rollouts/features/analysis/#background-analysis
+      analysis:
+        templates:
+        - templateName: success-rate
+        startingStep: 2 # delay starting analysis run until setWeight: 20%
+        args:
+        - name: service-name
+          value: guestbook-svc.default.svc.cluster.local
       steps:
       - stepWeight: 10
+      - pause: {duration: 10m}
+      - stepWeight: 20
       - analysis:
           templates:
           - templateName: success-rate
@@ -43,22 +56,25 @@ spec:
             value: guestbook-svc.default.svc.cluster.local
 ```
 
-# AWSNetworkLoadBalancerTargetDeployment
+# Cell with AWSNetworkLoadBalancer
 
-`AWSNetworkLoadBalancerTargetDeployment` represents the latest AWS target group that is exposed to the client with an AWS Network Load Balancer.
+`Cell` with `AWSNetworkLoadBalancer` represents the latest AWS target group that is exposed to the client with an AWS Network Load Balancer.
 
 Unlike it's Application counterpart, this resource has support for BlueGreen strategy only due to the limitation of Network Load Balancer.
 
 ```yaml
-kind: AWSNetworkLoadBalancerTargetDeployment
+kind: Cell
 spec:
-  listenerARN: ...
-  selector:
-    matchLabels:
-      role: web
-  # versionedBy:
-  #   label: version
-  #   creationTimestamp: {}
+  ingress:
+    type: AWSNetworkLoadBalancer
+    awsApplicationLoadBalancer:
+      listenerARN: ...
+      targetGroupSelector:
+        matchLabels:
+          role: web
+    # versionedBy:
+    #   label: version
+    #   creationTimestamp: {}
   updateStrategy:
     type: BlueGreen
     // Unlike Canary, BlueGreen uses the latest target group that matches the
@@ -167,7 +183,7 @@ Usually, this resource is managed by `AWSTargetGroupSet`. One that is managed by
 ```yaml
 kind: AWSTargetGroup
 metadata:
-  name: web-"{{.eks.clusterName}}"
+  name: web-cluster1
   labels:
     role: web
   ownerReferences:
