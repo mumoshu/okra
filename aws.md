@@ -1,12 +1,23 @@
-CRDs:
+# Okra-provided Custom Resources
 
-- [Cell with AWSApplicationLoadBalancer](#cell-with-awsapplicationloadbalancer)
-- [Cell with AWSNetworkLoadBalancer](#cell-with-awsnetworkloadbalancer)
+`okra` provides the following Kubernetes CRDs:
+
+- [Cell](#cell)
+  - [Cell with AWSApplicationLoadBalancer](#cell-with-awsapplicationloadbalancer)
+  - [Cell with AWSNetworkLoadBalancer](#cell-with-awsnetworkloadbalancer)
 - [ClusterSet](#clusterset)
 - [AWSTargetGroupSet](#awstargetgroupset)
 - [AWSTargetGroup](#awstargetgroup)
 
-# Cell with AWSApplicationLoadBalancer
+# Cell
+
+`Cell` represents a cell in a Cell-based architecture. Each cell is assumed to consist of one or more Kubernetes clusters that is called a cluster "replica".
+
+You usually configure ArgoCD and its ApplicationSet resource so that it can automatically discover and deploy onto Kubernetes clusters newly created by any tool like Terraform, AWS CDK, Pulumi, and so on.
+
+`cell-controller` comes next. It detects N clusters with the latest version number where N is denoted by `cell.spec.replicas`. It then starts updating some loadbalancer configuration while running various analysis on the application running on the new clusters.
+
+## Cell with AWSApplicationLoadBalancer
 
 `AWSApplicationLoadBalancerTargetDeployment` represents a set of AWS target groups that is routed via an existing AWS Application Load Balancer.
 
@@ -15,6 +26,7 @@ The controller reconciles this resource to discover a the latest set of target g
 The only supported `updateStrategy` is `Canary`, which gradually migrates traffic while running analysis.
 
 ```yaml
+apiVersion: okra.mumoshu.github.io/v1alpha1
 kind: Cell
 metadata:
   name: web
@@ -56,13 +68,20 @@ spec:
             value: guestbook-svc.default.svc.cluster.local
 ```
 
-# Cell with AWSNetworkLoadBalancer
+`cell-controller` uses `targetGroupSelector` that is available in the cell spec to determine the ARN of the target group for each cluster, and updates the ALB with new forward config.
+
+`cell-controller` gradually updates forward config target group weights, by `stepWeight` on each interval, so that the gradual update happens. Under the hood, it just calls AWS APIs to update ALB Listener Rules.
+
+`AWSApplicationLoadBalancer`'s `status` sub-resource contains all the fields of the `spec` that applied to AWS. `cell-controller` compares `AWSApplicationLoadBalancer.spec` and `AWSApplicationLoadBalancer.status` and move the process forward only after the two becomes in-sync. Otherwise, it might fail to update weights by `stepWeight` when in a temporary AWS failure.
+
+## Cell with AWSNetworkLoadBalancer
 
 `Cell` with `AWSNetworkLoadBalancer` represents the latest AWS target group that is exposed to the client with an AWS Network Load Balancer.
 
 Unlike it's Application counterpart, this resource has support for BlueGreen strategy only due to the limitation of Network Load Balancer.
 
 ```yaml
+apiVersion: okra.mumoshu.github.io/v1alpha1
 kind: Cell
 spec:
   ingress:
@@ -94,7 +113,11 @@ spec:
 
 `ClusterSet` auto-discovers EKS clusters and generates ArgoCD cluster secrets.
 
+`clusterset-controller` reconciles this resource, by calling AWS EKS GetCluster API, build a Kubernetes client config from it, and then create ArgoCD cluster secrets.
+
+
 ```yaml
+apiVersion: okra.mumoshu.github.io/v1alpha1
 kind: ClusterSet
 metadata:
   name: cart
@@ -150,6 +173,7 @@ This resources has support for the `eks` generator that generates a cluster secr
 The below example would result in creating one AWSTargetGroup per cluster and each group consists of all the nodes whose label matches `type=node`.
 
 ```yaml
+apiVersion: okra.mumoshu.github.io/v1alpha1
 kind: AWSTargetGroupSet
 metadata:
   name: web
@@ -181,6 +205,7 @@ The controller reconciles an `AWSTargetGroup` resource by discovering the target
 Usually, this resource is managed by `AWSTargetGroupSet`. One that is managed by `AWSTargetGroupSet` would look like the below:
 
 ```yaml
+apiVersion: okra.mumoshu.github.io/v1alpha1
 kind: AWSTargetGroup
 metadata:
   name: web-cluster1
@@ -213,6 +238,7 @@ status:
 Another use-case of this resource is to let the controller register any targets as you like. This is useful when you're managing a single target group in e.g. Terraform or CloudFormation and you'd like to register all the nodes in multiple clusters to the target group.
 
 ```yaml
+apiVersion: okra.mumoshu.github.io/v1alpha1
 kind: AWSTargetGroup
 metadata:
   labels:
