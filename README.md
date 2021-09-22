@@ -79,17 +79,19 @@ It detects new `target groups`, and live migrate traffic by hot-swaping old targ
 
 It is inteded to be deployed onto a "control-plane" cluster to where you usually deploy applications like ArgoCD.
 
-It is opinionated in a way that it requires you to use:
+It requires you to use:
 
-- ALB(s) to load-balance traffic "across" clusters
-  - You bring your own ALB, Listener, and Target Groups, and tell `okra` the Listener ID, Target Group ARNs and Weights. If you use `aws-loadbalaner-controller`, you can use `TargetGroupBinding` only.
+- NLB or ALB to load-balance traffic "across" clusters
+  - You bring your own LB, Listener, and tell `okra` the Listener ID, Number of Target Groups per Cell, and a label to group target groups by version.
 - Uses ArgoCD ApplicationSets to deploy your applications onto cluster(s)
 
-In the future, it may add support for using Route 53 Weighted Routing instead of ALB and using another application deployment tool other than ArgoCD.
+In the future, it may add support for using Route 53 Weighted Routing instead of ALB.
+
+Although we assume you use ApplicationSet for app deployments, it isn't really a strict requirement. Okra doesn't communiate with ArgoCD or ApplicationSet. All Okra does is to discover EKS clusters, create and label target groups for the discovered clusters, and rollout the target groups. You can just bring your own tool to deploy apps onto the clusters today.
 
 It supports complex configurations like below:
 
-- One or more clusters per service=ALB listener rule. Imagine a case that you need a pair of clusters to serve your service. `okra` is able to canary-deploy the pair of clusters, by periodically updating two target group weights as a whole.
+- One or more clusters per cell, or an ALB listener rule. Imagine a case that you need a pair of clusters to serve your service. `okra` is able to canary-deploy the pair of clusters, by periodically updating two target group weights as a whole.
 
 A complex example of Cell would look like the below:
 
