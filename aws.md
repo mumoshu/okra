@@ -13,9 +13,13 @@
 
 `Cell` represents a cell in a Cell-based architecture. Each cell is assumed to consist of one or more Kubernetes clusters that is called a cluster "replica".
 
-You usually configure ArgoCD and its ApplicationSet resource so that it can automatically discover and deploy onto Kubernetes clusters newly created by any tool like Terraform, AWS CDK, Pulumi, and so on.
+However, you don't see clusters in a Cell spec. It is generalized to only require target groups, loadbalancer, and metrics related configuration.
 
-`cell-controller` comes next. It detects N clusters with the latest version number where N is denoted by `cell.spec.replicas`. It then starts updating some loadbalancer configuration while running various analysis on the application running on the new clusters.
+You can bring your own provisioning tool to create EKS cluster with or without target groups. If you want to let Okra create target groups for you, use Okra's [ClusterSet](#clusterset).
+
+You usually configure ArgoCD and its ApplicationSet resource so that it can automatically discover and deploy onto Kubernetes clusters newly created by your provisoning toool. Such tools include Terraform, AWS CDK, Pulumi, and so on.
+
+`cell-controller` comes only after the target groups are created. It detects N target groups before rollout. It firstly groups target groups by the value of the label denoted by `cell.spec.versionedBy.label`, and it then sorts groups of target groups by the version number in the label. Once there are N target groups for the latest version number, where N is denoted by `cell.spec.replicas`, it starts updating the loadbalancer configuration. It concurrently runs various analysis on the application running (behind the target groups|on the new clusters), to ensure safe rollout.
 
 ## Cell with AWSApplicationLoadBalancer
 
