@@ -16,8 +16,11 @@ If you've been using ephemeral Kubernetes clusters and employed blue-green or ca
 
 In the best scenario, a system update with `okra` looks like the below.
 
-- You provision one or more new clusters, and update a `Cell` custom resource provided by `okra` to include the new clusters
-- Have some coffee, and `okra` will run various steps to safely update all the related K8s and IaaS resources. The job includes gradually migrating workloads from the old clusters to the new clusters, by updating ArgoCD configs and AWS ALB settings.
+- You provision one or more new clusters with some cluster tags
+- An external system like ArgoCD with ApplicationSet deploys your apps to the new clusters
+- `cell-controller` starts discovering the new clusters by tags
+- Once there are enough clusters, `cell-controller` starts updating the loadbalancer configuration to gradually migrate traffic from the old to the new clusters.
+- Have some coffee. `okra` will run various steps to ensure there are no errors, and it reverts the loadbalancer configuration changes when there are too many errors or test failures.
 
 ## Project Status and Scope
 
@@ -25,53 +28,52 @@ In the best scenario, a system update with `okra` looks like the below.
 
 ## How does it work?
 
-The okra `Cell` controller will manage the traffic shift across clusters.
+Okra's `cell-contorller` will manage the traffic shift across clusters.
 
-In the beginning, a user gives each `Cell` a set of settings to discover EKS clusters, and a set of application details, where each application detail contains the information for the relevant ALB, ArgoCD resources, and metrics.
+In the beginning, a user gives each `Cell` a set of settings to discover AWS target groups and configure loadbalancers, and metrics.
 
-The controller periodically discovers EKS clusters. It then compares the target groups associated to the ALB with the clusters that the controller knows. If there's any difference, it starts updating the ALB.
+The controller periodically discovers AWS target groups. Once there are enough number of new target groups, it then compares the target groups associated to the loadbalancer. If there's any difference, it starts updating the ALB while checking various metrics for safe rollout.
 
-When `okra` updates a system to add a new set of clusters to the ALB, it modifies the ALB forward config so that the ALB gradually shifts traffic to the target groups for the cluster set.
+Okra uses Kubernetes CRDs and custom resources as a state store and uses the standard Kubernetes API to interact with resources.
+
+Okra calls various AWS APIs to create and update AWS target groups and update AWS ALB and NLB forward config for traffic management.
 
 ### Comparison with Flagger and Argo Rollouts
 
 Unlike `Argo Rollouts` and `Flagger`, in `Okra` there is no notions of "active" and "preview" services for a blue-green deployment, or "canary" and "stable" services for a canary deployment.
 
-Each set of clusters should be assigned dedicated target groups and applications. In other words, there's one or more target groups per each cluster for an application. `kubespray` basically does a canary deployment, where the old set of target groups is consdidered "stable" and the new set of target groups is considered "canary".
+It assumes there's one or more target groups per cell. `cell` basically does a canary deployment, where the old set of target groups is consdidered "stable" and the new set of target groups is considered "canary".
+
+In `Flagger` or `Argo Rollouts`, you need to update its K8s resource to trigger a new rollout. In Okra you don't need to do so. You preconfigure its resource and Okra auto-starts a rollout once it discovers enough number of new target groups.
 
 ## Concepts
 
 `okra` updates your `Cell`.
 
-A okra `Cell` is composed of `clusters` and `applications`.
+A okra `Cell` is composed of target groups and an AWS loadbalancer, and a set of metrics for canary anlysis.
 
-A `cluster` is a Kubernetes cluster that runs your container workloads.
+Each target group is tied to a `cluster`, where a `cluster` is a Kubernetes cluster that runs your container workloads.
 
 An `application` is deployed onto `clusters` by `ArgoCD`. The traffic to the `application` is routed via an [AWS ALB](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/introduction.html) in front of `clusters`.
 
 ```
-kind: System
+kind: Cell
 spec:
-  clusters:
-  - name: ...
-  applications:
-  - name: ...
-    clusterSelector: ...
-    argocd: ...
-    alb: ...
+  ingress:
+    type: AWSApplicationLoadBalancer
+    awsApplicationLoadBalancer:
+      listenerARN: ...
+      targetGroupSelector:
+        matchLabels:
+          role: web
+  replicas: 2
+  versionedBy:
+    label: "okra.mumoshu.github.io/version"
 ```
 
 `okra` acts as an application traffic migrator.
 
-It detects new `clusters` in an updated `System` spec, then detects affected `applications`, live migrate traffic by hot-swaping old clusters serving the affected `applications` with the new clusters, while keepining the `applications` up and running.
-
-## Related Projects
-
-- [ArgoCD](https://argoproj.github.io/argo-cd/) is a continuous deployment system that embraces GitOps to sync desired state stored in Git with the Kubernetes cluster's state. `okra` integrates with `ArgoCD` and especially its `ApplicationSet` controller for applicaation deployments.
-  - `okra` relies on ArgoCD `ApplicationSet` controller's [`Cluster Generator` feature](https://argocd-applicationset.readthedocs.io/en/stable/Generators/#label-selector)
-- [Flagger](https://flagger.app/) and [Argo Rollouts](https://argoproj.github.io/argo-rollouts/) enables canary deployments of apps running across pods. `okra` enables canary deployments of clusters running on IaaS.
-- [argocd-clusterset](https://github.com/mumoshu/argocd-clusterset) auto-discovers EKS clusters and turns those into ArgoCD cluster secrets. `okra` does the same with its `ArgoCDCluster` CRD and `argocdcluster-controller`.
-- [terraform-provider-eksctl's courier_alb resource](https://github.com/mumoshu/terraform-provider-eksctl/tree/master/pkg/courier) enables canary deployments on target groups behind AWS ALB with metrics analysis for Datadog and CloudWatc metrics. `okra` does the same with it's `ALB` CRD and `alb-controller`.
+It detects new `target groups`, and live migrate traffic by hot-swaping old target groups serving the affected `applications` with the new target groups, while keepining the `applications` up and running.
 
 ## Usage
 
@@ -89,11 +91,11 @@ It supports complex configurations like below:
 
 - One or more clusters per service=ALB listener rule. Imagine a case that you need a pair of clusters to serve your service. `okra` is able to canary-deploy the pair of clusters, by periodically updating two target group weights as a whole.
 
-A complex example of System would look like the below:
+A complex example of Cell would look like the below:
 
 ```
 apiVersion: okra.mumoshu.github.io/v1alpha1
-kind: System
+kind: Cell
 metadata:
   name: mysystem
 spec:
@@ -328,8 +330,22 @@ status:
 
 `status.observedHash=somehash` equals to the value in `analysis-hash: somehash` after sync. You can leverage this to make sure that the last check was run with the latest query.
 
+## Related Projects
+
+Okra is inspired by various open-source projects listed below.
+
+- [ArgoCD](https://argoproj.github.io/argo-cd/) is a continuous deployment system that embraces GitOps to sync desired state stored in Git with the Kubernetes cluster's state. `okra` integrates with `ArgoCD` and especially its `ApplicationSet` controller for applicaation deployments.
+  - `okra` relies on ArgoCD `ApplicationSet` controller's [`Cluster Generator` feature](https://argocd-applicationset.readthedocs.io/en/stable/Generators/#label-selector)
+- [Flagger](https://flagger.app/) and [Argo Rollouts](https://argoproj.github.io/argo-rollouts/) enables canary deployments of apps running across pods. `okra` enables canary deployments of clusters running on IaaS.
+- [argocd-clusterset](https://github.com/mumoshu/argocd-clusterset) auto-discovers EKS clusters and turns those into ArgoCD cluster secrets. `okra` does the same with its `ArgoCDCluster` CRD and `argocdcluster-controller`.
+- [terraform-provider-eksctl's courier_alb resource](https://github.com/mumoshu/terraform-provider-eksctl/tree/master/pkg/courier) enables canary deployments on target groups behind AWS ALB with metrics analysis for Datadog and CloudWatc metrics. `okra` does the same with it's `ALB` CRD and `alb-controller`.
+
 ## Why is it named "okra"?
 
-The author thought that hot-swapping a cluster while keeping your apps running looks like hot-swaping a drive while keeping a server running.
+Initially it was named `kubearray`, but the original author wanted something more catchy and pretty.
 
-We tend to call a cluster of storages where each storage drive can be hot-swapped a "storage array", hence calling a tool to build a cluster of clusters where each cluster can be hot-swapped "okra" seemed like a good idea.
+In the beginning of this project, the author thought that hot-swapping a cluster while keeping your apps running looks like hot-swaping a drive while keeping a server running.
+
+We tend to call a cluster of storages where each storage drive can be hot-swapped a "storage array", hence calling a tool to build a cluster of clusters where each cluster can be hot-swapped "kubearray" seemed like a good idea.
+
+Then he searched over the Internet. While browsing a list of cool Japanese terms with 3 syllables, he encountered "okra". "Okra" is a pod vegetable full of edible seeds. The term is relatively unique that it sounds almost the same in both Japanese and English. The author thought that "okra" can be a good metaphor for a cluster of sub-clusters when each seed in an okra is compared to a sub-cluster.
