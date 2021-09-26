@@ -332,6 +332,12 @@ status:
 
 `status.observedHash=somehash` equals to the value in `analysis-hash: somehash` after sync. You can leverage this to make sure that the last check was run with the latest query.
 
+## CRDs
+
+`Okra` provides several Kuberntetes CustomResourceDefinitions(CRD) to achieve its goal.
+
+See [crd.md](crd.md) for more documentation and details of each CRD.
+
 ## Related Projects
 
 Okra is inspired by various open-source projects listed below.
