@@ -2,11 +2,11 @@
 
 `Okra` is a [Kubernetes controller](https://kubernetes.io/docs/concepts/architecture/controller/) and a set of [CRDs](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/) which provide advanced multi-cluster appilcation rollout capabilities, such as canary deployment of clusters.
 
-`okra` manages **Cell** for you. A cell is like a storage array but for Kubernetes clusters.
+`Okra` manages **cells** for you. A cell can be compared to a few things.
 
-You hot-swap a disk in a storage array while running. Similarly, with `okra` you hot-swap a cluster in a system while running.
+A cell is like a Kubernetes pod of containers. It's an isolated set of containers, where each container usually runs a single application, and you can have two or more pods for availability and scalability. Similarly, a cell is a set of Kubernetes clusters, where each cluster runs your application and you can have two or more clusters behind a loadbalancer for horizontal scalability beyond the limit of a single cluster.
 
-`okra` (currently) integrates with AWS ALB and NLB and target groups for traffic management, CloudWatch Metrics and Datadog for canary analysis.
+A cell is like a storage array but for Kubernetes clusters. You hot-swap a disk in a storage array while running. Similarly, with `okra` you hot-swap a cluster in a cell while keeping your application up and running.
 
 ## Goals
 
@@ -14,23 +14,25 @@ You hot-swap a disk in a storage array while running. Similarly, with `okra` you
 
 If you've been using ephemeral Kubernetes clusters and employed blue-green or canary deployments for zero-downtime cluster updates, you might have suffered from a lot of manual steps required. `okra` is intended to automate all those steps.
 
-In the best scenario, a system update with `okra` looks like the below.
+In a standard scenario, a system update with `okra` would like the below.
 
-- You provision one or more new clusters with some cluster tags
+- You provision one or more new clusters with cluster tags like `name=web-1-v2, role=web, version=v2`
 - An external system like ArgoCD with ApplicationSet deploys your apps to the new clusters
-- `cell-controller` starts discovering the new clusters by tags
-- Once there are enough clusters, `cell-controller` starts updating the loadbalancer configuration to gradually migrate traffic from the old to the new clusters.
-- Have some coffee. `okra` will run various steps to ensure there are no errors, and it reverts the loadbalancer configuration changes when there are too many errors or test failures.
+- Okra's `cell-controller` starts discovering the new clusters by tags like `role=web`
+- Once there are enough clusters (with e.g. `role=web`) for the latest version tag like `version=v1`, `cell-controller` starts updating the loadbalancer configuration to gradually migrate traffic from the old to the new clusters.
+- `Okra` run various steps to ensure there are no errors, and it reverts the loadbalancer configuration changes when there are too many errors or test failures.
 
 ## Project Status and Scope
 
+`okra` (currently) integrates with AWS ALB and NLB and target groups for traffic management, CloudWatch Metrics and Datadog for canary analysis.
+
 `okra` currently works on AWS only, but the design and implementation is generic enough to be capable of adding more IaaS supports. Any contribution around that is welcomed.
 
-## How does it work?
+## How it works
 
 Okra's `cell-contorller` will manage the traffic shift across clusters.
 
-In the beginning, a user gives each `Cell` a set of settings to discover AWS target groups and configure loadbalancers, and metrics.
+You give each `Cell` a set of settings to discover AWS target groups and configure loadbalancers, and metrics.
 
 The controller periodically discovers AWS target groups. Once there are enough number of new target groups, it then compares the target groups associated to the loadbalancer. If there's any difference, it starts updating the ALB while checking various metrics for safe rollout.
 
@@ -92,245 +94,6 @@ Although we assume you use ApplicationSet for app deployments, it isn't really a
 It supports complex configurations like below:
 
 - One or more clusters per cell, or an ALB listener rule. Imagine a case that you need a pair of clusters to serve your service. `okra` is able to canary-deploy the pair of clusters, by periodically updating two target group weights as a whole.
-
-A complex example of Cell would look like the below:
-
-```
-apiVersion: okra.mumoshu.github.io/v1alpha1
-kind: Cell
-metadata:
-  name: mysystem
-spec:
-  clusters:
-  - name: mycluster-web-1-v2
-    eks:
-      #clusterName: mycluster-web-1-v2
-    # by default this fetches the EKS cluster named mycluster-v2
-    # This waits until the cluster is ready and running
-    requireReady: true
-    # or allow notready for 60m...
-    #readyTimeout: 60m
-    labels:
-      role: web
-  - name: mycluster-web-2-v2
-    eks: {}
-    labels:
-      role: web
-  - name: mycluster-api-v1
-    eks: {}
-    labels:
-      role: api
-      targetGroupARN: ...someARN...
-  - name: mycluster-backgroundjobs-v1
-    eks: {}
-    labels:
-      role: backgroundjobs
-  applications:
-  - name: web
-    # selector is required when there are two or more clusters
-    clusterSelector:
-      matchEKSTags:
-        role: web
-    # This automatically waits for related applicationset(s) to be reconciled
-    argocd:
-      clusterSecret:
-        labels:
-          myservice-role: web
-          # secret-type label is automatically added.
-          #argocd.argoproj.io/secret-type: cluster
-      applicationSet:
-        name: ...
-        #selector: ...
-      updateStrategy:
-        type: CreateBeforeDelete
-    # There's implicit ordering between argocdClusterSecret and alb updates.
-    # okra will firstly update argocdClusterSecret to add new clusters,
-    # and then updates ALB so that it routes more traffic to new clusters.
-    # Once all the checks passed, it finally removes old clusters from
-    # argocdClusterSecret.
-    # This is how argocdClusterSecret.updateStrategy=CreateBeforeDelete works in concert with alb
-    alb:
-      listenerARN: ...
-      forwardConfig:
-        priority: 10
-        targetGroup:
-          # this doesn't work when selector matched two or more clusters
-          arn: ...
-          #targetgroupBindingSelector: svc=web
-          #arnFromLabel: targetGroupARN
-      updateStrategy: #canary
-        stepWeight: 10
-        totalWeight: 100
-    checks:
-    - name: dd
-      analysis:
-        query: |
-          ... {{.Vars.clusterName}}
-          ... {{.Vars.albListenerARN}} ...{{.Vars.targetGroupARN}}
-        max: 0.1
-  - name: api
-    clusterSelector:
-      role: api
-    argocd:
-      clusterSecret:
-        labels:
-          myservice-role: api
-          # secret-type label is automatically added.
-          #argocd.argoproj.io/secret-type: cluster
-      applicationSet:
-        selector: ...
-      updateStrategy:
-        type: CreateBeforeDelete
-    alb:
-      listenerARN: ...
-      forwardConfig:
-        priority: 11
-        targetGroup:
-          #arn: ...
-          #targetgroupBindingSelector: svc=api
-          arnFromLabel: targetGroupARN
-      updateStrategy: #blue-green
-        stepWeight: 100
-        totalWeight: 100
-    checks:
-    - name: dd
-      analysis
-        query: |
-          ... {{.Vars.eksClusterName}}
-          ... {{.Vars.albListenerARN}} ...{{.Vars.targetGroupARN}}
-        max: 0.1
-  - name: backgroundjobs
-    clusterSelector:
-      role: backgroundjobs
-    # This automatically waits for related applicationset(s) to be reconciled
-    # This result in removing old cluster secrets.
-    argocd:
-      clusterSecret:
-        lables:
-          myservice-role: backgroundjobs
-      applicationSet:
-        selector: ...
-      updateStrategy:
-        type: DeleteBeforeCreate
-    # Note that argocdClusterSecret.updateStrategy=DeleteBeforeCreate with alb is not allowed(validation error).
-    
-    # Wait for prechecks to pass before updating the secret
-    prechecks:
-    - name: run-test
-      job:
-        template:
-          spec:
-            image: ...
-            command: ...
-            args: ...
-status:
-  phase: Failed
-  #phase: Reverting
-  #phase: FailedReverting
-  applications:
-  - name: web
-    phase: Synced
-  - name: api
-    phase: Syncing
-  - name: backgroundjobs
-    phase: Pending
-  - name: someotherservice
-    phase: PrecheckFailed
-    message: run-test failed. Waiting 60 seconds before starting a rollback
-```
-
-## How it works
-
-`okra` waits for all the clusters are ready, and starts migrating workloads only after that. This ensures that there will be no traffic flapping. In the example above, `okra` starts migration only after all the clusters:
-
-- mycluster-web-1-v2
-- mycluster-web-2-v2
-- mycluster-api-v1
-- mycluster-backgroundjobs-v1
-
-are up and running.
-
-If it were to auto-discover e.g. `mycluster-web-1-v2` and start migrating workloads to it, what should it do when it discovers `mycluster-web-2-v2` next? It might work differently depending on in which timing it discovered a cluster in a same group.
-
-Forcing to wait for all the relevant clusters to become ready before migrating workloads makes the whole story simple and deterministic. This is also a good practice to minimize downtime migrating aapps like Kafka consumers across clusters, because it may result in less resharding.
-
-On each reconcilation loop, `okra` runs the following steps:
-
-- Iterate over `clusters` and ensure all the clusters are ready
-- Iterate over `applications` and ensure all the services have desired clusters
-  - If not, for each out-of-sync service:
-    - Phase=Init: Run precheck if any, recording check results paired with current ALB forward config hash. Proceed only if it succeeded. Requeue if failed. Requeue if processed. If the hash doesn't change and the recorded check results indicate successful checks, do nothing.
-    - Phase=Migrating: Run N (=stepWeight / totalWeight) steps to gradually change ALB settings
-      - On each step, run all the checks with retries. Record the check results in ClusterSet statusProceed only if it suceeded. Requeue if processed, so that one reconcilation loop runs only one series of checks, to avoid long blocking.
-    - Phase=Completing: Run postchecks and record the results. Requeue if processed.
-    = Phase=Error: If checks or prechecks failed, it will either stop or rollback. For rollback, it reads old ClusterSet revisions from the cluster.
-    = Phase=Completed: Does nothing.
-
-## Implementation
-
-`okra` provides the following Kubernetes CRDs:
-
-- `Check`
-
-### `Check`
-
-```
-checks:
-- name: dd
-  analysis
-    query: |
-      ... {{.Vars.eksClusterName}}
-      ... {{.Vars.albListenerARN}} ...{{.Vars.targetGroupARN}}
-```
-
-translates to the below if queries are different across clusters:
-
-```
-kind: Check
-metadata:
-  name: mysystem-dd-mycluster-web-1-v2
-  annotations:
-    analysis-hash: somehash
-spec:
-  analysis
-    interval: 10s
-    query: |
-      ... mycluster-web-1-v2
-      ... listenerARN1 ... targetGroupARN1
-    max: 0.1
-status:
-  analysis:
-    observedHash: somehash
-    results:
-    - ...
-```
-
-or the below if the queries are equivalent across clusters:
-
-```
-kind: Check
-metadata:
-  name: mysystem-dd
-  annotations:
-    analysis-hash: somehash
-spec:
-  analysis
-    interval: 10s
-    query: |
-      ... v2 ...
-    max: 0.1
-status:
-  lastPassed: true
-  lastRunTime: iso3339datetimestring
-  analysis:
-    observedHash: somehash
-    results:
-    - ...
-```
-
-`check.status.lastPassed` becemes `true` when and only when the last check passed. `lastRunTime` contains the time when the last check ran.
-
-`status.observedHash=somehash` equals to the value in `analysis-hash: somehash` after sync. You can leverage this to make sure that the last check was run with the latest query.
 
 ## CRDs
 
