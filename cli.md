@@ -154,3 +154,32 @@ spec:
 ```
 
 `AnalysisRun`'s spec is mostly equivalent to that of `AnalysisTemplate`'s, except that `{{args.service-name}}` in the template is replaced with `foo` and `{{args.prometheus-port}}` is replaced with `9090`. `foo` is from the `--args service-name=foo` and `9090` is from the default value defined in the template's args field.
+
+When `--wait` is provided, the command waits until the run to complete. It's considered complete when `status.phase` is either `Error` or `Succeeded`. If phase was `Error`, the command prints a summary of the last `status.metricResults[].measurements[]` item, and exists with code 1.
+
+Let's say it failed like:
+
+```
+  status:
+    message: 'metric "success-rate" assessed Error due to consecutiveErrors (5) >
+      consecutiveErrorLimit (4): "Error Message: Post "http://prometheus.example.com:9090/api/v1/query":
+      dial tcp: lookup prometheus.example.com on 10.96.0.10:53: no such host"'
+    metricResults:
+    - consecutiveError: 5
+      error: 5
+      measurements:
+      - *snip*
+      - finishedAt: "2021-09-28T08:54:29Z"
+        message: 'Post "http://prometheus.example.com:9090/api/v1/query": dial tcp:
+          lookup prometheus.example.com on 10.96.0.10:53: no such host'
+        phase: Error
+        startedAt: "2021-09-28T08:54:29Z"
+      message: 'Post "http://prometheus.example.com:9090/api/v1/query": dial tcp:
+        lookup prometheus.example.com on 10.96.0.10:53: no such host'
+      name: success-rate
+      phase: Error
+    phase: Error
+    startedAt: "2021-09-28T08:53:49Z"
+```
+
+It writes the message `Post "http://prometheus.example.com:9090/api/v1/query": dial tcp: lookup prometheus.example.com on 10.96.0.10:53: no such host` to stderr and exsits with 1.
