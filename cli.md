@@ -8,7 +8,11 @@ It is currently used to run and test various operations used by various okra con
 - [create awstargetgroup](#create-awstargetgroup)
 - [create cell](#create-cell)
 - [sync cell](#sync-cell)
+- [create awsalbupdate](#create-awsalbupdate)
+- [sync awsalbupdate](#sync-awsalbupdate)
 - [run analysis](#run-analysis)
+- [create analysis](#create-analysis)
+- [sync analysis](#sync-analysis)
 
 ## controller-manager
 
@@ -84,15 +88,41 @@ This command get the `TargetGroupBinding` resource named `$TG_BINDING_NAME` from
 
 ### sync cell $NAME
 
-This command loads `Cell` resource named $NAME`.
+This command loads `Cell` resource named `$NAME`.
 
 It then fetches all the `AWSTargetGroup` resources that matches the selector (`role=web` for example), group the matched resources by `okra.mumo.co/version` tag values (by default), and sort the groups in an descending order of the semver assuming the tag value contains a semver.
 
 When the group with the newest version has `$REPLICAS` or more target groups in it, it starts updating the AWS ALB listener denoted by `$LISTENER_ARN`.
 
-Before actually updating the listener, it runs analysis. A listener update is pended until there are enough number of successful Analysis runs that happened after the lastest ALB forward config update. Therefore, to complete the canary deployment, you usually need to run `sync cell` several or dozen times.
+The lister update is done by creating either an `AWSALBUpdate` or `AWSNLBUpdate` resource depending on the loadbalancer specified in the `Cell` resource. The creation part can be run independently by using [create awsalbupdate](#create-awsalbupdate).
 
-`sync cell` uses the custom resource's status as a state store. More concretely, the last ALB forward config update time and the history of analysis runs and the results are stored in the `Cell` resource's status.
+If there was an ongoing `AWSALBUpdate` resource whose `status.phase` is still `InProgress`, the command exists with code 0 without creating another `AWSALBUpdate` resource.
+
+`sync cell` uses `Cell`'s status to signal other K8s controller or clients. It doesn't use the status as a state store.
+
+## create awsalbupdate
+
+This command creates a new `AWSALBUpdate` resource. To sync it, use [sync awsalbupdate](#sync-awsalbupdate).
+
+### create awsalbupdate $NAME --listener-arn $LISTENER_ARN --from-target-group-arns $OLD_TG_ARN1 --to-target-group-arns $TO_TG_ARN1
+
+This command creates a `AWSALBUpdate` resource whose name is `$NAME`.
+
+## sync awsalbupdate
+
+### sync awsalbupdate $NAME
+
+This command loads `AWSALBUpdate` resource named `$NAME` and reconciles it.
+
+Before actually updating the listener, it runs analysis. A listener update is pended until there are enough number of successful analysises that happened after the lastest ALB forward config update.
+
+A analysis run can be trigered via [run analysis](#run-analysis).
+
+To complete the canary deployment, you need to rerun `sync awsalbupdate` once again after `run analysis` completed.
+
+`sync awsalbupdate` uses `AWSALBUpdate`'s status to signal `cell-controller` about the completion of the update.
+
+More concretely, `status.phase` is set to `Succeeded`, `Error`, or `Canceled` depending on the result of analysis runs, AWS API outputs, etc. It becomes `Error` when it failed to update the ALB listener forward config before the deadline, or any of the analysis runs failed with `status.phase` of `Error` . It becomes `Canceled` when `spec.canceled` is set to `true` by `cell-controller`.
 
 ## run analysis
 
