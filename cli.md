@@ -8,6 +8,11 @@ It is currently used to run and test various operations used by various okra con
 - [create awstargetgroup](#create-awstargetgroup)
 - [create cell](#create-cell)
 - [sync cell](#sync-cell)
+- [run analysis](#run-analysis)
+
+## controller-manager
+
+This command runs okra's controller-manager that is composed of several Kubernetes controllers that powers [CRDs](#/crd.md).
 
 ## create argocdclustersecret
 
@@ -87,4 +92,65 @@ When the group with the newest version has `$REPLICAS` or more target groups in 
 
 Before actually updating the listener, it runs analysis. A listener update is pended until there are enough number of successful Analysis runs that happened after the lastest ALB forward config update. Therefore, to complete the canary deployment, you usually need to run `sync cell` several or dozen times.
 
-`sync cell` uses the custom resource status as a state store. More concretely, the last ALB forward config update time and the history of analysis runs and the results are stored in the `Cell` resource's status.
+`sync cell` uses the custom resource's status as a state store. More concretely, the last ALB forward config update time and the history of analysis runs and the results are stored in the `Cell` resource's status.
+
+## run analysis
+
+`run analysis` creates a Argo Rollout's `AnalysisRun` resource from a `AnalysisTemplate`, and optionally waits for the run to complete.
+
+See the relevant part of [Argo Rollouts documentation](https://argoproj.github.io/argo-rollouts/features/analysis/) for more information about `AnalysisTemplate` and `AnalysisRun`.
+
+### run analysis $NAME --template-name $TEMPLATE_NAME --args key1=val1,key2=val2
+
+This command creates an `AnalysisRun` resource named `$NAME` from the template denoted by `TEMPLATE_NAME`. The run args are populated via `--args`.
+
+Let say you had a template that looks like:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: success-rate
+spec:
+  args:
+  - name: service-name
+  - name: prometheus-port
+    value: 9090
+  metrics:
+  - name: success-rate
+    successCondition: result[0] >= 0.95
+    provider:
+      prometheus:
+        address: "http://prometheus.example.com:{{args.prometheus-port}}"
+        query: |
+          sum(irate(
+            istio_requests_total{reporter="source",destination_service=~"{{args.service-name}}",response_code!~"5.*"}[5m]
+          )) /
+          sum(irate(
+            istio_requests_total{reporter="source",destination_service=~"{{args.service-name}}"}[5m]
+          ))
+```
+
+`okra run analysis run1 --template-name success-rate --args service-name=foo` will create a run like the below.
+
+```yaml
+kind: AnalysisRun
+metadata:
+  name: run1
+spec:
+  metrics:
+  - name: success-rate
+    successCondition: result[0] >= 0.95
+    provider:
+      prometheus:
+        address: "http://prometheus.example.com:9090"
+        query: |
+          sum(irate(
+            istio_requests_total{reporter="source",destination_service=~"foo",response_code!~"5.*"}[5m]
+          )) /
+          sum(irate(
+            istio_requests_total{reporter="source",destination_service=~"foo"}[5m]
+          ))
+```
+
+`AnalysisRun`'s spec is mostly equivalent to that of `AnalysisTemplate`'s, except that `{{args.service-name}}` in the template is replaced with `foo` and `{{args.prometheus-port}}` is replaced with `9090`. `foo` is from the `--args service-name=foo` and `9090` is from the default value defined in the template's args field.
