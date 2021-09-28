@@ -8,6 +8,7 @@
 - [ClusterSet](#clusterset)
 - [AWSTargetGroupSet](#awstargetgroupset)
 - [AWSTargetGroup](#awstargetgroup)
+- [AWSTargetGroupBinding](#awstargetgroup)
 
 # Cell
 
@@ -44,8 +45,7 @@ spec:
           role: web
   # replicas: N
   # versionedBy:
-  #   label: version
-  #   creationTimestamp: {}
+  #   label: okra.mumo.co/version
   updateStrategy:
     type: Canary
     # Canary uses the set of target groups whose labels contains
@@ -82,7 +82,7 @@ spec:
 
 `Cell` with `AWSNetworkLoadBalancer` represents the latest AWS target group that is exposed to the client with an AWS Network Load Balancer.
 
-Unlike it's Application counterpart, this resource has support for BlueGreen strategy only due to the limitation of Network Load Balancer.
+Unlike it's Application counterpart, this resource has support for BlueGreen strategy only, due to the limitation of Network Load Balancer.
 
 ```yaml
 apiVersion: okra.mumoshu.github.io/v1alpha1
@@ -96,8 +96,7 @@ spec:
         matchLabels:
           role: web
     # versionedBy:
-    #   label: version
-    #   creationTimestamp: {}
+    #   label: okra.mumo.co/version
   updateStrategy:
     type: BlueGreen
     // Unlike Canary, BlueGreen uses the latest target group that matches the
@@ -119,7 +118,6 @@ spec:
 
 `clusterset-controller` reconciles this resource, by calling AWS EKS GetCluster API, build a Kubernetes client config from it, and then create ArgoCD cluster secrets.
 
-
 ```yaml
 apiVersion: okra.mumoshu.github.io/v1alpha1
 kind: ClusterSet
@@ -127,13 +125,14 @@ metadata:
   name: cart
 spec:
   generators:
-  - eks:
-      tags:
-        role: "web"
+  - awseks:
+      clusterSelector:
+        matchTags:
+          role: "web"
   template:
     metadata:
       labels:
-        role: "{{role}}"
+        role: "{{.awseks.cluster.name}}"
 ```
 
 Assuming there were two EKS clusters whose tags contained `role=web`, the following two cluster secrets are generated:
@@ -183,18 +182,29 @@ metadata:
   name: web
 spec:
   generators:
-  - eks:
-      tags:
-        role: "web"
+  - awseks:
+      clusterSelector:
+        matchTags:
+          role: "web"
+      bindingSelector:
+        matchLabels:
+          role: "web"
+  # template is a template for dynamically generated AWSTargetGroup resources
   template:
     metadata:
-      name: web-"{{.eks.clusterName}}"
+      name: web-"{{.awseks.cluster.name}}"
       labels:
-        role: "{{.eks.tags.role}}"
+        role: "{{.awseks.cluster.tags.role}}"
+  # bindingTemplate is optional, and used only when you want to dynamically generate AWSTargetGroupBinding
+  bindingTemplate:
+    metadata:
+      name: web-"{{.awseks.cluster.name}}"
+      labels:
+        role: "{{.awseks.cluster.tags.role}}"
     spec:
         targets:
         - name: specificnodeincluster
-          clusterName: "{{.eks.clusterName}}"
+          clusterName: "{{.awseks.cluster.name}}"
           nodeSelector:
             type: node
           port: 8080
@@ -202,15 +212,38 @@ spec:
 
 # AWSTargetGroup
 
-`AWSTargetGroup` represents a desired state of an existing or dynamically generated AWS target group.
+`AWSTargetGroup` represents an existing AWS target group that is managed by okra or by an external controller like `aws-load-balancer-controller` or `terraform` and so on.
 
-The controller reconciles an `AWSTargetGroup` resource by discovering the target clusters, then discovers pods and nodes in the clusters as targets, and finally creates or updates a target group to register the discovered targets.
+The purpose of this resource is to let the cell controller to know about the new and the old target groups for canary deployments.
+
+```yaml
+apiVersion: okra.mumoshu.github.io/v1alpha1
+kind: AWSTargetGroup
+metadata:
+  name: web-cluster1
+  labels:
+    role: web
+  ownerReferences:
+  - apiVersion: $API_VERSION
+    blockOwnerDeletion: true
+    controller: true
+    kind: AWSTargetGroupSet
+    name: web
+spec:
+  arn: $TARGET_GROUP_ARN
+```
+
+# AWSTargetGroupBinding
+
+`AWSTargetGroupBinding` represents a desired state of an existing or dynamically generated AWS target group.
+
+The controller reconciles an `AWSTargetGroupBinding` resource by discovering the target clusters, then discovers pods and nodes in the clusters as targets, and finally creates or updates a target group to register the discovered targets.
 
 Usually, this resource is managed by `AWSTargetGroupSet`. One that is managed by `AWSTargetGroupSet` would look like the below:
 
 ```yaml
 apiVersion: okra.mumoshu.github.io/v1alpha1
-kind: AWSTargetGroup
+kind: AWSTargetGroupBinding
 metadata:
   name: web-cluster1
   labels:
@@ -243,7 +276,7 @@ Another use-case of this resource is to let the controller register any targets 
 
 ```yaml
 apiVersion: okra.mumoshu.github.io/v1alpha1
-kind: AWSTargetGroup
+kind: AWSTargetGroupBinding
 metadata:
   labels:
     role: web

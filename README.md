@@ -101,6 +101,12 @@ It supports complex configurations like below:
 
 See [crd.md](crd.md) for more documentation and details of each CRD.
 
+## CLI
+
+`okra` is the CLI application that consists of the controller and other utility commands for testing.
+
+See [CLI](/cli.md) for more information and its usage.
+
 ## Related Projects
 
 Okra is inspired by various open-source projects listed below.
