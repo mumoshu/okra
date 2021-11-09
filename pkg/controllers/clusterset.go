@@ -36,8 +36,7 @@ import (
 )
 
 const (
-	containerName = "runner"
-	finalizerName = "runner.okra.mumo.co"
+	finalizerName = "okra.mumo.co"
 )
 
 // ClusterSetReconciler reconciles a ClusterSet object
@@ -123,34 +122,4 @@ func (r *ClusterSetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&v1alpha1.ClusterSet{}).
 		Owns(&corev1.Secret{}).
 		Complete(r)
-}
-
-func addFinalizer(finalizers []string) ([]string, bool) {
-	exists := false
-	for _, name := range finalizers {
-		if name == finalizerName {
-			exists = true
-		}
-	}
-
-	if exists {
-		return finalizers, false
-	}
-
-	return append(finalizers, finalizerName), true
-}
-
-func removeFinalizer(finalizers []string) ([]string, bool) {
-	removed := false
-	result := []string{}
-
-	for _, name := range finalizers {
-		if name == finalizerName {
-			removed = true
-			continue
-		}
-		result = append(result, name)
-	}
-
-	return result, removed
 }

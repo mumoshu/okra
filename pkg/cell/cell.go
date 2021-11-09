@@ -1,4 +1,4 @@
-package awsapplicationloadbalancer
+package cell
 
 import (
 	okrav1alpha1 "github.com/mumoshu/okra/api/v1alpha1"
@@ -16,7 +16,7 @@ func (p *Provider) CreateConfigFromAWS(input CreateInput) error {
 }
 
 type SyncInput struct {
-	Spec okrav1alpha1.AWSApplicationLoadBalancerConfigSpec
+	Spec okrav1alpha1.CellSpec
 }
 
 func Sync(config SyncInput) error {

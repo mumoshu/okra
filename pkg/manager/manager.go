@@ -77,6 +77,39 @@ func (m *Manager) Run() error {
 		return err
 	}
 
+	awsTargetGroupSetReconciler := &controllers.AWSTargetGroupSetReconciler{
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName("AWSTargetGroupSet"),
+		Scheme: mgr.GetScheme(),
+	}
+
+	if err = awsTargetGroupSetReconciler.SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "AWSTargetGroupSet")
+		return err
+	}
+
+	awsALBConfigReconciler := &controllers.AWSApplicationLoadBalancerConfigReconciler{
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName("AWSApplicationLoadBalancerConfig"),
+		Scheme: mgr.GetScheme(),
+	}
+
+	if err = awsALBConfigReconciler.SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "AWSApplicationLoadBalancerConfig")
+		return err
+	}
+
+	cellReconciler := &controllers.CellReconciler{
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName("Cell"),
+		Scheme: mgr.GetScheme(),
+	}
+
+	if err = cellReconciler.SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Cell")
+		return err
+	}
+
 	// +kubebuilder:scaffold:builder
 
 	setupLog.Info("starting manager")

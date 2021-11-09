@@ -11,6 +11,7 @@ import (
 	"github.com/mumoshu/okra/pkg/clclient"
 	"github.com/mumoshu/okra/pkg/okraerror"
 	"golang.org/x/xerrors"
+	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -47,6 +48,7 @@ type SyncInput struct {
 	DryRun          bool
 	NS              string
 	ClusterName     string
+	ClusterSelector string
 	BindingSelector string
 	Labels          map[string]string
 }
@@ -120,77 +122,92 @@ func CreateMissingAWSTargetGroups(config SyncInput) ([]SyncResult, error) {
 
 	kubeclient := clientset.CoreV1().Secrets(ns)
 
-	secret, err := kubeclient.Get(context.TODO(), config.ClusterName, metav1.GetOptions{})
-	if err != nil {
-		return nil, xerrors.Errorf("listing cluster secrets: %w", err)
-	}
-
 	managementClient, err := clclient.New()
 	if err != nil {
 		return nil, err
 	}
 
-	client, err := clclient.NewFromClusterSecret(*secret)
-	if err != nil {
-		return nil, err
-	}
+	var secrets []corev1.Secret
 
-	var bindings v1beta1.TargetGroupBindingList
-
-	optionalNS := ""
-
-	sel, err := labels.Parse(config.BindingSelector)
-	if err != nil {
-		return nil, xerrors.Errorf("parsing binding selector: %v", err)
-	}
-
-	if err := client.List(context.TODO(), &bindings, &runtimeclient.ListOptions{
-		Namespace:     optionalNS,
-		LabelSelector: sel,
-	}); err != nil {
-		return nil, okraerror.New(err)
-	}
-
-	var objects []okrav1alpha1.AWSTargetGroup
-
-	for _, b := range bindings.Items {
-		labels := map[string]string{}
-
-		for k, v := range b.Labels {
-			labels[k] = v
+	if config.ClusterName != "" {
+		secret, err := kubeclient.Get(context.TODO(), config.ClusterName, metav1.GetOptions{})
+		if err != nil {
+			return nil, xerrors.Errorf("getting cluster secret: %w", err)
 		}
 
-		for k, v := range config.Labels {
-			labels[k] = v
+		secrets = append(secrets, *secret)
+	} else if config.ClusterSelector != "" {
+		secretList, err := kubeclient.List(context.TODO(), metav1.ListOptions{LabelSelector: config.ClusterSelector})
+		if err != nil {
+			return nil, xerrors.Errorf("listing cluster secrets: %w", err)
 		}
 
-		objects = append(objects, okrav1alpha1.AWSTargetGroup{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   b.Name,
-				Labels: labels,
-			},
-			Spec: okrav1alpha1.AWSTargetGroupSpec{
-				ARN: b.Spec.TargetGroupARN,
-			},
-		})
+		secrets = secretList.Items
 	}
 
-	for _, object := range objects {
-		// Manage resource
-		if !dryRun {
-			err := managementClient.Create(context.TODO(), &object)
-			if err != nil {
-				if kerrors.IsAlreadyExists(err) {
-					fmt.Printf("AWSTargetGroup %q has no change\n", object.Name)
+	for _, secret := range secrets {
+		client, err := clclient.NewFromClusterSecret(secret)
+		if err != nil {
+			return nil, err
+		}
+
+		var bindings v1beta1.TargetGroupBindingList
+
+		optionalNS := ""
+
+		sel, err := labels.Parse(config.BindingSelector)
+		if err != nil {
+			return nil, xerrors.Errorf("parsing binding selector: %v", err)
+		}
+
+		if err := client.List(context.TODO(), &bindings, &runtimeclient.ListOptions{
+			Namespace:     optionalNS,
+			LabelSelector: sel,
+		}); err != nil {
+			return nil, okraerror.New(err)
+		}
+
+		var objects []okrav1alpha1.AWSTargetGroup
+
+		for _, b := range bindings.Items {
+			labels := map[string]string{}
+
+			for k, v := range b.Labels {
+				labels[k] = v
+			}
+
+			for k, v := range config.Labels {
+				labels[k] = v
+			}
+
+			objects = append(objects, okrav1alpha1.AWSTargetGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   b.Name,
+					Labels: labels,
+				},
+				Spec: okrav1alpha1.AWSTargetGroupSpec{
+					ARN: b.Spec.TargetGroupARN,
+				},
+			})
+		}
+
+		for _, object := range objects {
+			// Manage resource
+			if !dryRun {
+				err := managementClient.Create(context.TODO(), &object)
+				if err != nil {
+					if kerrors.IsAlreadyExists(err) {
+						fmt.Printf("AWSTargetGroup %q has no change\n", object.Name)
+					} else {
+						fmt.Fprintf(os.Stderr, "Failed creating object: %+v\n", object)
+						return nil, okraerror.New(err)
+					}
 				} else {
-					fmt.Fprintf(os.Stderr, "Failed creating object: %+v\n", object)
-					return nil, okraerror.New(err)
+					fmt.Printf("AWSTargetGroup %q created successfully\n", object.Name)
 				}
 			} else {
-				fmt.Printf("AWSTargetGroup %q created successfully\n", object.Name)
+				fmt.Printf("AWSTargetGroup %q created successfully (Dry Run)\n", object.Name)
 			}
-		} else {
-			fmt.Printf("AWSTargetGroup %q created successfully (Dry Run)\n", object.Name)
 		}
 	}
 
