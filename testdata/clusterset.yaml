@@ -1,0 +1,14 @@
+apiVersion: okra.mumo.co/v1alpha1
+kind: ClusterSet
+metadata:
+  name: clusterset1
+spec:
+  generators:
+  - awseks:
+      selector:
+        matchTags:
+          Service: demo
+  template:
+    metadata:
+      labels:
+        service: demo

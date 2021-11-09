@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisRun
+metadata:
+  name: run1
+spec:
+  metrics:
+  - name: success-rate
+    successCondition: result[0] >= 0.95
+    provider:
+      prometheus:
+        address: "http://prometheus.example.com:9090"
+        query: |
+          sum(irate(
+            istio_requests_total{reporter="source",destination_service=~"foo",response_code!~"5.*"}[5m]
+          )) /
+          sum(irate(
+            istio_requests_total{reporter="source",destination_service=~"foo"}[5m]
+          ))
