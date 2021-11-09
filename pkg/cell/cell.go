@@ -33,14 +33,22 @@ type SyncInput struct {
 	Name string
 
 	Spec okrav1alpha1.CellSpec
+
+	Client client.Client
 }
 
 func Sync(config SyncInput) error {
 	ctx := context.TODO()
 
-	managementClient, err := clclient.New()
-	if err != nil {
-		return err
+	managementClient := config.Client
+
+	if managementClient == nil {
+		var err error
+
+		managementClient, err = clclient.New()
+		if err != nil {
+			return err
+		}
 	}
 
 	albListenerARN := config.Spec.Ingress.AWSApplicationLoadBalancer.ListenerARN
