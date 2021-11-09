@@ -2,14 +2,6 @@
 
 `Okra` is a [Kubernetes controller](https://kubernetes.io/docs/concepts/architecture/controller/) and a set of [CRDs](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/) which provide advanced multi-cluster appilcation rollout capabilities, such as canary deployment of clusters.
 
-`Okra` manages **cells** for you. A cell can be compared to a few things.
-
-A cell is like a Kubernetes pod of containers. It's an isolated set of containers, where each container usually runs a single application, and you can have two or more pods for availability and scalability. Similarly, a cell is a set of Kubernetes clusters, where each cluster runs your application and you can have two or more clusters behind a loadbalancer for horizontal scalability beyond the limit of a single cluster.
-
-A cell is like a storage array but for Kubernetes clusters. You hot-swap a disk in a storage array while running. Similarly, with `okra` you hot-swap a cluster in a cell while keeping your application up and running.
-
-## Goals
-
 `okra` eases managing ephemeral Kubernetes clusters.
 
 If you've been using ephemeral Kubernetes clusters and employed blue-green or canary deployments for zero-downtime cluster updates, you might have suffered from a lot of manual steps required. `okra` is intended to automate all those steps.
@@ -29,7 +21,13 @@ In a standard scenario, a system update with `okra` would like the below.
 
 ## How it works
 
-Okra's `cell-contorller` will manage the traffic shift across clusters.
+`Okra` manages **cells** for you. A cell can be compared to a few things.
+
+A cell is like a Kubernetes pod of containers. It's an isolated set of containers, where each container usually runs a single application, and you can have two or more pods for availability and scalability. Similarly, a cell is a set of Kubernetes clusters, where each cluster runs your application and you can have two or more clusters behind a loadbalancer for horizontal scalability beyond the limit of a single cluster.
+
+A cell is like a storage array but for Kubernetes clusters. You hot-swap a disk in a storage array while running. Similarly, with `okra` you hot-swap a cluster in a cell while keeping your application up and running.
+
+Okra's `cell-contorller` is responsible for managing the traffic shift across clusters.
 
 You give each `Cell` a set of settings to discover AWS target groups and configure loadbalancers, and metrics.
 
