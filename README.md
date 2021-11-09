@@ -16,11 +16,10 @@ If you've been using ephemeral Kubernetes clusters and employed blue-green or ca
 
 In a standard scenario, a system update with `okra` would like the below.
 
-- You provision one or more new clusters with cluster tags like `name=web-1-v2, role=web, version=v2`
-- An external system like ArgoCD with ApplicationSet deploys your apps to the new clusters
-- Okra's `cell-controller` starts discovering the new clusters by tags like `role=web`
-- Once there are enough clusters (with e.g. `role=web`) for the latest version tag like `version=v1`, `cell-controller` starts updating the loadbalancer configuration to gradually migrate traffic from the old to the new clusters.
-- `Okra` run various steps to ensure there are no errors, and it reverts the loadbalancer configuration changes when there are too many errors or test failures.
+- **You** provision one or more new clusters with cluster tags like `name=web-1-v2, role=web, version=v2`
+- **Okra** auto-imports the clusters into **ArgoCD**
+- **ArgoCD ApplicationSet** deploys your apps onto the new clusters
+- **Okra** updates the loadbalancer configuration to gradually migrate traffic to the new clusters, while running various checks to ensure application availability
 
 ## Project Status and Scope
 

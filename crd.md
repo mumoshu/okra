@@ -167,6 +167,28 @@ metadata:
     name: cart
 ```
 
+
+# AWSApplicationLoadBalancerConfig
+
+`AWSApplicationLoadBalancerConfig` represents a desired configuration of a specific AWS Application Loadbalancer.
+
+```
+kind: AWSApplicationLoadBalancerConfig
+metadata:
+  name: ...
+spec:
+  listenerARN: $LISTENER_ARN
+  forwardTargetGroups:
+  - name: prev
+    arn: prev1
+    weight: 40
+  - name: next
+    arn: prev2
+    weight: 60
+```
+
+`cell-controller` is responsible for gradually updating `forwardConfig` depending on `stepWeight`. The `awsapplicationloadbalancerconfig-controller` updates the target ALB as exactly as described in the config.
+
 # AWSTargetGroupSet
 
 `AWSTargetGroupSet` auto-discovers clusters and generates `AWSTargetGroup`.
@@ -184,7 +206,7 @@ spec:
   generators:
   - awseks:
       clusterSelector:
-        matchTags:
+        matchLabels:
           role: "web"
       bindingSelector:
         matchLabels:
@@ -192,7 +214,6 @@ spec:
   # template is a template for dynamically generated AWSTargetGroup resources
   template:
     metadata:
-      name: web-"{{.awseks.cluster.name}}"
       labels:
         role: "{{.awseks.cluster.tags.role}}"
   # bindingTemplate is optional, and used only when you want to dynamically generate AWSTargetGroupBinding
