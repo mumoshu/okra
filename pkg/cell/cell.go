@@ -96,20 +96,20 @@ func Sync(config SyncInput) error {
 		}
 	}
 
-	if len(albConfig.Spec.Forward.TargetGroups) == 0 {
+	if len(albConfig.Spec.Listener.Rule.Forward.TargetGroups) == 0 {
 		for _, tg := range desiredTGs {
-			albConfig.Spec.Forward.TargetGroups = append(albConfig.Spec.Forward.TargetGroups, tg)
+			albConfig.Spec.Listener.Rule.Forward.TargetGroups = append(albConfig.Spec.Listener.Rule.Forward.TargetGroups, tg)
 		}
 
 		if err := managementClient.Create(ctx, &albConfig); err != nil {
 			return err
 		}
-	} else if len(desiredTGs) != len(albConfig.Spec.Forward.TargetGroups) {
+	} else if len(desiredTGs) != len(albConfig.Spec.Listener.Rule.Forward.TargetGroups) {
 		// Do update immediately without analysis or step update when
 		// it seems to have been triggered by an additional cluster that might have been
 		// added to deal with more load.
 		for _, tg := range desiredTGs {
-			albConfig.Spec.Forward.TargetGroups = append(albConfig.Spec.Forward.TargetGroups, tg)
+			albConfig.Spec.Listener.Rule.Forward.TargetGroups = append(albConfig.Spec.Listener.Rule.Forward.TargetGroups, tg)
 		}
 
 		if err := managementClient.Update(ctx, &albConfig); err != nil {
@@ -124,7 +124,7 @@ func Sync(config SyncInput) error {
 		var stableTGsWeight, canaryTGsWeight int
 
 		var stableTGs []okrav1alpha1.ForwardTargetGroup
-		for _, tg := range albConfig.Spec.Forward.TargetGroups {
+		for _, tg := range albConfig.Spec.Listener.Rule.Forward.TargetGroups {
 			stableTGsWeight += tg.Weight
 
 			tg := tg
@@ -332,7 +332,7 @@ func Sync(config SyncInput) error {
 			}
 		}
 
-		albConfig.Spec.Forward.TargetGroups = updatedTGs
+		albConfig.Spec.Listener.Rule.Forward.TargetGroups = updatedTGs
 
 		if err := managementClient.Update(ctx, &albConfig); err != nil {
 			return err

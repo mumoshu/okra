@@ -1,6 +1,7 @@
 package awsapplicationloadbalancer
 
 import (
+	"github.com/aws/aws-sdk-go/aws/session"
 	okrav1alpha1 "github.com/mumoshu/okra/api/v1alpha1"
 )
 
@@ -17,8 +18,9 @@ func (p *Provider) CreateConfigFromAWS(input CreateInput) error {
 
 type SyncInput struct {
 	Spec okrav1alpha1.AWSApplicationLoadBalancerConfigSpec
-}
 
-func Sync(config SyncInput) error {
-	return nil
+	Region  string
+	Profile string
+	Address string
+	Session *session.Session
 }

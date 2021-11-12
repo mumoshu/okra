@@ -22,8 +22,28 @@ import (
 
 // AWSApplicationLoadBalancerConfigSpec defines the desired state of AWSApplicationLoadBalancerConfigp
 type AWSApplicationLoadBalancerConfigSpec struct {
-	ListenerARN string  `json:"listenerARN,omitempty"`
-	Forward     Forward `json:"forward,omitempty"`
+	ListenerARN string `json:"listenerARN,omitempty"`
+
+	Listener Listener `json:"listener,omitempty"`
+}
+
+type Listener struct {
+	Rule ListenerRule `json:"rule,omitempty"`
+}
+
+type ListenerRule struct {
+	// Priority is the priority of the rule in a ALB listener that is
+	// also used as a unique key
+	Priority int `json:"priority,omitempty"`
+
+	Hosts        []string            `json:"hosts,omitempty"`
+	PathPatterns []string            `json:"pathPatterns,omitempty"`
+	Methods      []string            `json:"methods,omitempty"`
+	SourceIPs    []string            `json:"sourceIPs,omitempty"`
+	Headers      map[string][]string `json:"headers,omitempty"`
+	QueryStrings map[string]string   `json:"queryStrings,omitempty"`
+
+	Forward Forward `json:"forward,omitempty"`
 }
 
 type Forward struct {
