@@ -11,8 +11,8 @@ It is currently used to run and test various operations used by various okra con
 - [list latest-awstargetgroups](#list-awslatest-targetgroups)
 - [create cell](#create-cell)
 - [sync cell](#sync-cell)
-- [create awsalbupdate](#create-awsalbupdate)
-- [sync awsalbupdate](#sync-awsalbupdate)
+- [create awsapplicationloadbalancerconfig](#create-awsapplicationloadbalancerconfig)
+- [sync awsapplicationloadbalancerconfig](#sync-awsapplicationloadbalancerconfig)
 - [run analysis](#run-analysis)
 - [create analysis](#create-analysis)
 - [sync analysis](#sync-analysis)
@@ -125,7 +125,7 @@ Before updating the listener, it firstly ensures that there's exactly one loadba
 
 The initial config's spec field is derived from the current state of the loadbalancer obtained by calling AWS API. The creation part can be run independently by using [create awsapplicationloadbalancerconfig](#create-awsapplicationloadbalancerconfig).
 
-If there was an on-going `AWSApplicationLoadBalancerConfig` resource whose `status.phase` is still `Updating`, the command exists with code 0 without creating another `AWSApplicationLoadBalancerConfig` resource.
+If there was an `AWSApplicationLoadBalancerConfig` resource whose `status.phase` is still `Updating`, the command exists with code 0 without creating another `AWSApplicationLoadBalancerConfig` resource. To complete the config update, run [sync awsapplicationloadbalancerconfig](#sync-awsapplicationloadbalancerconfig).
 
 If there's an `AWSApplicationLoadBalancerConfig` resource and its `status.phase` is `Updated` or `Created`, an update starts. An update works differently depending on the current step index. The current step index is either derived from `cell.status` or the `--step-index` flag of this command.
 
@@ -143,9 +143,7 @@ In any case, if previous step has `sleep`, it loads the start and end time of th
 
 In other words, it usually either (1)sleep for a while or (2)runs an analysis before updating the listener. If it was a sleep, the next listener update is pended until it the sleep duration elapses.
 
-If it was an analysis, the listener update is pended until there are enough number of successful analysises that happened after the lastest ALB forward config update. To complete the canary deployment, you need to rerun `sync cell` once again after `run analysis` completed.
-
-A analysis run can be trigered via [run analysis](#run-analysis), too.
+If it was an analysis, the listener update is pended until there are enough number of successful analysises that happened after the lastest ALB forward config update. To complete the canary deployment, you need to rerun `sync cell` once again after `run analysis` completed. A analysis run can be trigered via [run analysis](#run-analysis) command.
 
 `sync cell` updates `Cell`'s status to signal other K8s controller or clients. It doesn't use the status as a state store.
 
