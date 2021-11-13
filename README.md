@@ -23,7 +23,7 @@ In a standard scenario, a system update with `okra` would like the below.
 
 `Okra` manages **cells** for you. A cell can be compared to a few things.
 
-A cell is like a Kubernetes pod of containers. It's an isolated set of containers, where each container usually runs a single application, and you can have two or more pods for availability and scalability. Similarly, a cell is a set of Kubernetes clusters, where each cluster runs your application and you can have two or more clusters behind a loadbalancer for horizontal scalability beyond the limit of a single cluster.
+A cell is like a Kubernetes pod of containers. A Kubernetes pod an isolated set of containers, where each container usually runs a single application, and you can have two or more pods for availability and scalability. A Okra `cell` is a set of Kubernetes clusters, where each cluster runs your application and you can have two or more clusters behind a loadbalancer for horizontal scalability beyond the limit of a single cluster.
 
 A cell is like a storage array but for Kubernetes clusters. You hot-swap a disk in a storage array while running. Similarly, with `okra` you hot-swap a cluster in a cell while keeping your application up and running.
 
