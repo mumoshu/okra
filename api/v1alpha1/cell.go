@@ -77,7 +77,8 @@ type CellIngressAWSNetworkLoadBalancer struct {
 }
 
 type TargetGroupSelector struct {
-	MatchLabels map[string]string `json:"matchLabels,omitempty"`
+	MatchLabels   map[string]string `json:"matchLabels,omitempty"`
+	VersionLabels []string          `json:"versionLabels,omitempty"`
 }
 
 type CellUpdateStrategy struct {

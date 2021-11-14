@@ -379,7 +379,7 @@ func Sync(config SyncInput) ([]SyncResult, error) {
 type ListLatestAWSTargetGroupsInput struct {
 	ListAWSTargetGroupsInput
 
-	SemverLabelKey string
+	SemverLabelKeys []string
 }
 
 type ListAWSTargetGroupsInput struct {
@@ -398,8 +398,8 @@ func ListLatestAWSTargetGroups(config ListLatestAWSTargetGroupsInput) ([]okrav1a
 		groups []okrav1alpha1.AWSTargetGroup
 	}
 
-	labelKey := config.SemverLabelKey
-	if labelKey == "" {
+	labelKeys := config.SemverLabelKeys
+	if len(labelKeys) == 0 {
 		return nil, fmt.Errorf("missing semver label key")
 	}
 
@@ -410,8 +410,16 @@ func ListLatestAWSTargetGroups(config ListLatestAWSTargetGroupsInput) ([]okrav1a
 	for _, g := range groups {
 		g := g
 
-		verStr, ok := g.Labels[labelKey]
-		if !ok {
+		var verStr string
+
+		for _, labelKey := range labelKeys {
+			verStr = g.Labels[labelKey]
+			if verStr != "" {
+				break
+			}
+		}
+
+		if verStr == "" {
 			return nil, fmt.Errorf("no semver label found on group: %v", g)
 		}
 

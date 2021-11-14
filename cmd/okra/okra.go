@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	_ "github.com/aws/aws-sdk-go/service/eks"
+	okrav1alpha1 "github.com/mumoshu/okra/api/v1alpha1"
 	"github.com/mumoshu/okra/pkg/analysis"
 	"github.com/mumoshu/okra/pkg/awstargetgroupset"
 	"github.com/mumoshu/okra/pkg/clusterset"
@@ -191,7 +192,7 @@ func InitListAWSTargetGroupsFlags(flag *pflag.FlagSet, c *awstargetgroupset.List
 func InitListLatestAWSTargetGroupsFlags(flag *pflag.FlagSet, c *awstargetgroupset.ListLatestAWSTargetGroupsInput) func() *awstargetgroupset.ListLatestAWSTargetGroupsInput {
 	flag.StringVar(&c.NS, "namespace", "", "Namespace of AWSTargetGroup resources")
 	flag.StringVar(&c.Selector, "selector", "", "Label selector for AWSTargetGroup resources")
-	flag.StringVar(&c.SemverLabelKey, "semver-label-key", "okra.mumo.co/version", "The key of the label as a container of the version number of the group")
+	flag.StringSliceVar(&c.SemverLabelKeys, "semver-label-key", []string{okrav1alpha1.DefaultVersionLabelKey}, "The key of the label as a container of the version number of the group")
 
 	return func() *awstargetgroupset.ListLatestAWSTargetGroupsInput {
 		return c

@@ -67,12 +67,17 @@ func Sync(config SyncInput) error {
 		albConfig.Spec.ListenerARN = albListenerARN
 	}
 
+	labelKeys := config.Spec.Ingress.AWSApplicationLoadBalancer.TargetGroupSelector.VersionLabels
+	if len(labelKeys) == 0 {
+		labelKeys = []string{okrav1alpha1.DefaultVersionLabelKey}
+	}
+
 	latestTGs, err := awstargetgroupset.ListLatestAWSTargetGroups(awstargetgroupset.ListLatestAWSTargetGroupsInput{
 		ListAWSTargetGroupsInput: awstargetgroupset.ListAWSTargetGroupsInput{
 			NS:       config.NS,
 			Selector: tgSelector.String(),
 		},
-		SemverLabelKey: "okra.mumo.co/version",
+		SemverLabelKeys: labelKeys,
 	})
 	if err != nil {
 		return err
