@@ -23,13 +23,13 @@ In a standard scenario, a system update with `okra` would like the below.
 
 `Okra` manages **cells** for you. A cell can be compared to a few things.
 
-A cell is like a Kubernetes pod of containers. A Kubernetes pod an isolated set of containers, where each container usually runs a single application, and you can have two or more pods for availability and scalability. A Okra `cell` is a set of Kubernetes clusters, where each cluster runs your application and you can have two or more clusters behind a loadbalancer for horizontal scalability beyond the limit of a single cluster.
+A cell is like a Kubernetes pod of containers. A Kubernetes pod an isolated set of containers, where each container usually runs a single application, and you can have two or more pods for availability and scalability. A Okra [`cell`](/crd.md#cell) is a set of Kubernetes clusters, where each cluster runs your application and you can have two or more clusters behind a loadbalancer for horizontal scalability beyond the limit of a single cluster.
 
 A cell is like a storage array but for Kubernetes clusters. You hot-swap a disk in a storage array while running. Similarly, with `okra` you hot-swap a cluster in a cell while keeping your application up and running.
 
 Okra's `cell-contorller` is responsible for managing the traffic shift across clusters.
 
-You give each `Cell` a set of settings to discover AWS target groups and configure loadbalancers, and metrics.
+You give each [`Cell`](/crd.md#cell) a set of settings to discover AWS target groups and configure loadbalancers, and metrics.
 
 The controller periodically discovers AWS target groups. Once there are enough number of new target groups, it then compares the target groups associated to the loadbalancer. If there's any difference, it starts updating the ALB while checking various metrics for safe rollout.
 
@@ -47,7 +47,7 @@ In `Flagger` or `Argo Rollouts`, you need to update its K8s resource to trigger 
 
 ## Concepts
 
-`okra` updates your `Cell`.
+`okra` updates your [`Cell`](/crd.md#cell).
 
 A okra `Cell` is composed of target groups and an AWS loadbalancer, and a set of metrics for canary anlysis.
 
@@ -111,8 +111,8 @@ Okra is inspired by various open-source projects listed below.
 - [ArgoCD](https://argoproj.github.io/argo-cd/) is a continuous deployment system that embraces GitOps to sync desired state stored in Git with the Kubernetes cluster's state. `okra` integrates with `ArgoCD` and especially its `ApplicationSet` controller for applicaation deployments.
   - `okra` relies on ArgoCD `ApplicationSet` controller's [`Cluster Generator` feature](https://argocd-applicationset.readthedocs.io/en/stable/Generators/#label-selector)
 - [Flagger](https://flagger.app/) and [Argo Rollouts](https://argoproj.github.io/argo-rollouts/) enables canary deployments of apps running across pods. `okra` enables canary deployments of clusters running on IaaS.
-- [argocd-clusterset](https://github.com/mumoshu/argocd-clusterset) auto-discovers EKS clusters and turns those into ArgoCD cluster secrets. `okra` does the same with its `ArgoCDCluster` CRD and `argocdcluster-controller`.
-- [terraform-provider-eksctl's courier_alb resource](https://github.com/mumoshu/terraform-provider-eksctl/tree/master/pkg/courier) enables canary deployments on target groups behind AWS ALB with metrics analysis for Datadog and CloudWatc metrics. `okra` does the same with it's `ALB` CRD and `alb-controller`.
+- [argocd-clusterset](https://github.com/mumoshu/argocd-clusterset) auto-discovers EKS clusters and turns those into ArgoCD cluster secrets. `okra` does the same with its [`ClusterSet` CRD](/crd.md#clusterset) and `argocdcluster-controller`.
+- [terraform-provider-eksctl's courier_alb resource](https://github.com/mumoshu/terraform-provider-eksctl/tree/master/pkg/courier) enables canary deployments on target groups behind AWS ALB with metrics analysis for Datadog and CloudWatc metrics. `okra` does the same with it's [`AWSApplicationLoadBalancerConfig` CRD](/crd.md#awsapplicationloadbalancerconfig) and `awsapplicationloadbalancerconfig-controller`.
 
 ## Why is it named "okra"?
 
