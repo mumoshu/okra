@@ -87,6 +87,17 @@ func Sync(config SyncInput) error {
 
 	numLatestTGs := len(latestTGs)
 
+	// Ensure there enough cluster replicas to start a canary release
+	threshold := 1
+	if config.Spec.Replicas != nil {
+		threshold = int(*config.Spec.Replicas)
+	}
+
+	if numLatestTGs != threshold {
+		return nil
+	}
+
+	// Do distribute weights evently so that the total becomes 100
 	for i, tg := range latestTGs {
 		weight := 100 / numLatestTGs
 
@@ -102,6 +113,7 @@ func Sync(config SyncInput) error {
 	}
 
 	if len(albConfig.Spec.Listener.Rule.Forward.TargetGroups) == 0 {
+		// ALB isn't initialized yet so we are creating the ALBConfig resource for the first time
 		for _, tg := range desiredTGs {
 			albConfig.Spec.Listener.Rule.Forward.TargetGroups = append(albConfig.Spec.Listener.Rule.Forward.TargetGroups, tg)
 		}
