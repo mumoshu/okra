@@ -15,6 +15,7 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	runtimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
@@ -127,7 +128,7 @@ func CreateMissingAWSTargetGroups(config SyncInput) ([]SyncResult, error) {
 		return nil, xerrors.Errorf("creating cr clientset: %w", err)
 	}
 
-	var secrets []corev1.Secret
+	var clusters []corev1.Secret
 
 	if config.ClusterName != "" {
 		secret, err := kubeclient.Get(context.TODO(), config.ClusterName, metav1.GetOptions{})
@@ -135,18 +136,18 @@ func CreateMissingAWSTargetGroups(config SyncInput) ([]SyncResult, error) {
 			return nil, xerrors.Errorf("getting cluster secret: %w", err)
 		}
 
-		secrets = append(secrets, *secret)
+		clusters = append(clusters, *secret)
 	} else if config.ClusterSelector != "" {
 		secretList, err := kubeclient.List(context.TODO(), metav1.ListOptions{LabelSelector: config.ClusterSelector})
 		if err != nil {
 			return nil, xerrors.Errorf("listing cluster secrets: %w", err)
 		}
 
-		secrets = secretList.Items
+		clusters = secretList.Items
 	}
 
-	for _, secret := range secrets {
-		client, err := clclient.NewFromClusterSecret(secret)
+	for _, cluster := range clusters {
+		client, err := clclient.NewFromClusterSecret(cluster)
 		if err != nil {
 			return nil, fmt.Errorf("creating cr client from cluster secret: %w", err)
 		}
@@ -164,7 +165,7 @@ func CreateMissingAWSTargetGroups(config SyncInput) ([]SyncResult, error) {
 			Namespace:     optionalNS,
 			LabelSelector: sel,
 		}); err != nil {
-			return nil, okraerror.New(err)
+			return nil, okraerror.New(fmt.Errorf("list targetgroupbidings: %w", err))
 		}
 
 		var objects []okrav1alpha1.AWSTargetGroup
@@ -180,10 +181,14 @@ func CreateMissingAWSTargetGroups(config SyncInput) ([]SyncResult, error) {
 				labels[k] = v
 			}
 
+			labels[okrav1alpha1.AWSTargetGroupLabelNamespace] = b.Namespace
+			labels[okrav1alpha1.AWSTargetGroupLabelCluster] = config.ClusterName
+
 			objects = append(objects, okrav1alpha1.AWSTargetGroup{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:   b.Name,
-					Labels: labels,
+					Name:      fmt.Sprintf("%s-%s", b.Namespace, b.Name),
+					Namespace: ns,
+					Labels:    labels,
 				},
 				Spec: okrav1alpha1.AWSTargetGroupSpec{
 					ARN: b.Spec.TargetGroupARN,
@@ -200,7 +205,7 @@ func CreateMissingAWSTargetGroups(config SyncInput) ([]SyncResult, error) {
 						fmt.Printf("AWSTargetGroup %q has no change\n", object.Name)
 					} else {
 						fmt.Fprintf(os.Stderr, "Failed creating object: %+v\n", object)
-						return nil, okraerror.New(err)
+						return nil, okraerror.New(fmt.Errorf("create awstargetgroup: %w", err))
 					}
 				} else {
 					fmt.Printf("AWSTargetGroup %q created successfully\n", object.Name)
@@ -284,7 +289,7 @@ func DeleteOutdatedAWSTargetGroups(config SyncInput) ([]SyncResult, error) {
 		Namespace:     optionalNS,
 		LabelSelector: sel,
 	}); err != nil {
-		return nil, okraerror.New(err)
+		return nil, okraerror.New(fmt.Errorf("list bindings: %w", err))
 	}
 
 	var objects []okrav1alpha1.AWSTargetGroup
@@ -302,8 +307,9 @@ func DeleteOutdatedAWSTargetGroups(config SyncInput) ([]SyncResult, error) {
 
 		objects = append(objects, okrav1alpha1.AWSTargetGroup{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:   b.Name,
-				Labels: labels,
+				Name:      fmt.Sprintf("%s-%s", b.Namespace, b.Name),
+				Namespace: ns,
+				Labels:    labels,
 			},
 			Spec: okrav1alpha1.AWSTargetGroupSpec{
 				ARN: b.Spec.TargetGroupARN,
@@ -323,7 +329,7 @@ func DeleteOutdatedAWSTargetGroups(config SyncInput) ([]SyncResult, error) {
 		Namespace:     optionalNS,
 		LabelSelector: sel,
 	}); err != nil {
-		return nil, okraerror.New(err)
+		return nil, okraerror.New(fmt.Errorf("list awstargetgroups: %w", err))
 	}
 
 	var deleted []SyncResult
@@ -336,9 +342,15 @@ func DeleteOutdatedAWSTargetGroups(config SyncInput) ([]SyncResult, error) {
 				fmt.Printf("AWSTargetGroup %q deleted successfully (Dry Run)\n", name)
 			} else {
 				// Manage resource
-				err := kubeclient.Delete(context.TODO(), name, metav1.DeleteOptions{})
+				var awstg okrav1alpha1.AWSTargetGroup
+
+				if err := managementClient.Get(context.TODO(), types.NamespacedName{Namespace: ns, Name: name}, &awstg); err != nil {
+					return nil, fmt.Errorf("getting awstargetgroup: %w", err)
+				}
+
+				err := managementClient.Delete(context.TODO(), &awstg)
 				if err != nil {
-					return nil, err
+					return nil, fmt.Errorf("delete awstargetgroup: %w", err)
 				}
 
 				fmt.Printf("AWSTargetGroup %q deleted successfully\n", name)
@@ -362,12 +374,12 @@ type SyncResult struct {
 func Sync(config SyncInput) ([]SyncResult, error) {
 	created, err := CreateMissingAWSTargetGroups(config)
 	if err != nil {
-		return nil, xerrors.Errorf("creating missing cluster secrets: %w", err)
+		return nil, xerrors.Errorf("creating missing target groups: %w", err)
 	}
 
 	deleted, err := DeleteOutdatedAWSTargetGroups(config)
 	if err != nil {
-		return created, xerrors.Errorf("deleting redundant cluster secrets: %w", err)
+		return created, xerrors.Errorf("deleting redundant target groups: %w", err)
 	}
 
 	all := append([]SyncResult{}, created...)
