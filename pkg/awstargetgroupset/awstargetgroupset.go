@@ -12,6 +12,7 @@ import (
 	"github.com/mumoshu/okra/pkg/okraerror"
 	"golang.org/x/xerrors"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -81,16 +82,26 @@ func (p *Provider) CreateTargetGroup(config CreateTargetGroupInput) error {
 		return okraerror.New(fmt.Errorf("name is required"))
 	}
 
-	object := &okrav1alpha1.AWSTargetGroup{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: ns,
-			Labels:    labels,
-		},
-		Spec: okrav1alpha1.AWSTargetGroupSpec{
-			ARN: arn,
-		},
+	var object okrav1alpha1.AWSTargetGroup
+	var groupExists bool
+
+	if err := p.Client.Get(context.TODO(), types.NamespacedName{Namespace: ns, Name: name}, &object); err != nil {
+		if !errors.IsNotFound(err) {
+			return okraerror.New(fmt.Errorf("getting awstargetgroup: %w", err))
+		}
+
+		object = okrav1alpha1.AWSTargetGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: ns,
+				Labels:    labels,
+			},
+		}
+	} else {
+		groupExists = true
 	}
+
+	object.Spec.ARN = arn
 
 	if dryRun {
 		text, err := yaml.Marshal(object)
@@ -103,11 +114,17 @@ func (p *Provider) CreateTargetGroup(config CreateTargetGroupInput) error {
 		return nil
 	}
 
-	if err := p.Client.Create(context.TODO(), object); err != nil {
-		return okraerror.New(err)
+	if groupExists {
+		if err := p.Client.Update(context.TODO(), &object); err != nil {
+			return okraerror.New(fmt.Errorf("updating targetgroup: %w", err))
+		}
+		fmt.Printf("AWSTargetGroup %q updated successfully\n", name)
+	} else {
+		if err := p.Client.Create(context.TODO(), &object); err != nil {
+			return okraerror.New(fmt.Errorf("creating targetgroup: %w", err))
+		}
+		fmt.Printf("AWSTargetGroup %q created successfully\n", name)
 	}
-
-	fmt.Printf("AWSTargetGroup %q created successfully\n", name)
 
 	return nil
 }
@@ -147,7 +164,7 @@ func CreateMissingAWSTargetGroups(config SyncInput) ([]SyncResult, error) {
 	}
 
 	for _, cluster := range clusters {
-		client, err := clclient.NewFromClusterSecret(cluster)
+		clusterClient, err := clclient.NewFromClusterSecret(cluster)
 		if err != nil {
 			return nil, fmt.Errorf("creating cr client from cluster secret: %w", err)
 		}
@@ -161,7 +178,7 @@ func CreateMissingAWSTargetGroups(config SyncInput) ([]SyncResult, error) {
 			return nil, xerrors.Errorf("parsing binding selector: %v", err)
 		}
 
-		if err := client.List(context.TODO(), &bindings, &runtimeclient.ListOptions{
+		if err := clusterClient.List(context.TODO(), &bindings, &runtimeclient.ListOptions{
 			Namespace:     optionalNS,
 			LabelSelector: sel,
 		}); err != nil {
@@ -185,6 +202,10 @@ func CreateMissingAWSTargetGroups(config SyncInput) ([]SyncResult, error) {
 			labels[okrav1alpha1.AWSTargetGroupLabelCluster] = config.ClusterName
 
 			objects = append(objects, okrav1alpha1.AWSTargetGroup{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: okrav1alpha1.GroupVersion.String(),
+					Kind:       "AWSTargetGroup",
+				},
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      fmt.Sprintf("%s-%s", b.Namespace, b.Name),
 					Namespace: ns,
@@ -199,7 +220,7 @@ func CreateMissingAWSTargetGroups(config SyncInput) ([]SyncResult, error) {
 		for _, object := range objects {
 			// Manage resource
 			if !dryRun {
-				err := managementClient.Create(context.TODO(), &object)
+				err := managementClient.Patch(context.TODO(), &object, runtimeclient.Apply, client.ForceOwnership, client.FieldOwner("okra"))
 				if err != nil {
 					if kerrors.IsAlreadyExists(err) {
 						fmt.Printf("AWSTargetGroup %q has no change\n", object.Name)
@@ -208,10 +229,10 @@ func CreateMissingAWSTargetGroups(config SyncInput) ([]SyncResult, error) {
 						return nil, okraerror.New(fmt.Errorf("create awstargetgroup: %w", err))
 					}
 				} else {
-					fmt.Printf("AWSTargetGroup %q created successfully\n", object.Name)
+					fmt.Printf("AWSTargetGroup %q applied successfully\n", object.Name)
 				}
 			} else {
-				fmt.Printf("AWSTargetGroup %q created successfully (Dry Run)\n", object.Name)
+				fmt.Printf("AWSTargetGroup %q applied successfully (Dry Run)\n", object.Name)
 			}
 		}
 	}

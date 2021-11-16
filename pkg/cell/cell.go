@@ -56,6 +56,7 @@ func Sync(config SyncInput) error {
 	tgSelector := labels.SelectorFromSet(tgSelectorMatchLabels.MatchLabels)
 
 	var albConfig okrav1alpha1.AWSApplicationLoadBalancerConfig
+	var albConfigExists bool
 
 	if err := managementClient.Get(ctx, types.NamespacedName{Namespace: config.NS, Name: config.Name}, &albConfig); err != nil {
 		if !kerrors.IsNotFound(err) {
@@ -65,6 +66,8 @@ func Sync(config SyncInput) error {
 		albConfig.Namespace = config.NS
 		albConfig.Name = config.Name
 		albConfig.Spec.ListenerARN = albListenerARN
+	} else {
+		albConfigExists = true
 	}
 
 	labelKeys := config.Spec.Ingress.AWSApplicationLoadBalancer.TargetGroupSelector.VersionLabels
@@ -112,14 +115,14 @@ func Sync(config SyncInput) error {
 		}
 	}
 
-	if len(albConfig.Spec.Listener.Rule.Forward.TargetGroups) == 0 {
+	if !albConfigExists {
 		// ALB isn't initialized yet so we are creating the ALBConfig resource for the first time
 		for _, tg := range desiredTGs {
 			albConfig.Spec.Listener.Rule.Forward.TargetGroups = append(albConfig.Spec.Listener.Rule.Forward.TargetGroups, tg)
 		}
 
 		if err := managementClient.Create(ctx, &albConfig); err != nil {
-			return err
+			return fmt.Errorf("creating albconfig: %w", err)
 		}
 	} else if len(desiredTGs) != len(albConfig.Spec.Listener.Rule.Forward.TargetGroups) {
 		// Do update immediately without analysis or step update when
@@ -130,7 +133,7 @@ func Sync(config SyncInput) error {
 		}
 
 		if err := managementClient.Update(ctx, &albConfig); err != nil {
-			return err
+			return fmt.Errorf("updating albconfig: %w", err)
 		}
 	} else {
 		// This is a standard cell update for releasing a new app/cluster version.
@@ -162,6 +165,17 @@ func Sync(config SyncInput) error {
 
 			if len(canarySteps) > 0 {
 				var analysisRunList rolloutsv1alpha1.AnalysisRunList
+
+				labelSelector, err := labels.Parse("cell" + "=" + config.Name)
+				if err != nil {
+					return err
+				}
+
+				if err := managementClient.List(ctx, &analysisRunList, &client.ListOptions{
+					LabelSelector: labelSelector,
+				}); err != nil {
+					return err
+				}
 
 				var maxSuccessfulAnalysisRunStepIndex int
 				for _, ar := range analysisRunList.Items {
@@ -253,6 +267,7 @@ func Sync(config SyncInput) error {
 									Name:      fmt.Sprintf("%s-%s-%d", config.Name, tmpl.TemplateName, stepIndex),
 									Labels: map[string]string{
 										stepIndexLabel: stepIndexStr,
+										"cell":         config.Name,
 									},
 								},
 								Spec: rolloutsv1alpha1.AnalysisRunSpec{

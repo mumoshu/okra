@@ -57,7 +57,7 @@ func InitListClustersFlags(flag *pflag.FlagSet, c *clusterset.ListClustersInput)
 	}
 }
 
-func InitCreateTargetGroupBindingFlags(flag *pflag.FlagSet, c *targetgroupbinding.CreateInput) func() *targetgroupbinding.CreateInput {
+func InitCreateTargetGroupBindingFlags(flag *pflag.FlagSet, c *targetgroupbinding.ApplyInput) func() *targetgroupbinding.ApplyInput {
 	var labelKVs []string
 
 	flag.BoolVar(&c.DryRun, "dry-run", c.DryRun, "")
@@ -68,7 +68,7 @@ func InitCreateTargetGroupBindingFlags(flag *pflag.FlagSet, c *targetgroupbindin
 	flag.StringVar(&c.Namespace, "namespace", c.Namespace, "")
 	flag.StringSliceVar(&labelKVs, "labels", nil, "Comma-separated KEY=VALUE pairs of cluster secret labels")
 
-	return func() *targetgroupbinding.CreateInput {
+	return func() *targetgroupbinding.ApplyInput {
 		labels := map[string]string{}
 		for _, kv := range labelKVs {
 			split := strings.Split(kv, "=")
@@ -314,11 +314,11 @@ func Run() error {
 	listTargetGroupBindingInput = InitListTargetGroupBindingsFlags(listTargetGroupBindings.Flags(), &targetgroupbinding.ListInput{})
 	cmd.AddCommand(listTargetGroupBindings)
 
-	var createTargetGroupBindingInput func() *targetgroupbinding.CreateInput
-	createTargetGroupBinding := &cobra.Command{
-		Use: "create-targetgroupbinding",
+	var applyTargetGroupBindingInput func() *targetgroupbinding.ApplyInput
+	applyTargetGroupBinding := &cobra.Command{
+		Use: "apply-targetgroupbinding",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			binding, err := targetgroupbinding.Create(*createTargetGroupBindingInput())
+			binding, err := targetgroupbinding.Apply(*applyTargetGroupBindingInput())
 
 			if binding != nil {
 				fmt.Fprintf(os.Stdout, "%+v\n", binding)
@@ -327,8 +327,8 @@ func Run() error {
 			return err
 		},
 	}
-	createTargetGroupBindingInput = InitCreateTargetGroupBindingFlags(createTargetGroupBinding.Flags(), &targetgroupbinding.CreateInput{})
-	cmd.AddCommand(createTargetGroupBinding)
+	applyTargetGroupBindingInput = InitCreateTargetGroupBindingFlags(applyTargetGroupBinding.Flags(), &targetgroupbinding.ApplyInput{})
+	cmd.AddCommand(applyTargetGroupBinding)
 
 	var createMissingAWSTargetGroupsInput func() *awstargetgroupset.SyncInput
 	createMissingAWSTargetGroups := &cobra.Command{
@@ -411,6 +411,7 @@ func Run() error {
 	cmd.AddCommand(listLatestTargetGroups)
 
 	cmd.AddCommand(newSyncAWSApplicationLoadBalancerConfigCommand())
+	cmd.AddCommand(newSyncCellCommand())
 
 	var runAnalysisInput func() *analysis.RunInput
 	runAnalysis := &cobra.Command{

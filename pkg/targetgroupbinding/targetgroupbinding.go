@@ -2,11 +2,14 @@ package targetgroupbinding
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/mumoshu/okra/api/elbv2/v1beta1"
 	"github.com/mumoshu/okra/pkg/clclient"
 	"github.com/mumoshu/okra/pkg/okraerror"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	runtimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -51,7 +54,7 @@ func List(input ListInput) ([]v1beta1.TargetGroupBinding, error) {
 	return bindings.Items, nil
 }
 
-type CreateInput struct {
+type ApplyInput struct {
 	ClusterName      string
 	ClusterNamespace string
 	Name             string
@@ -61,7 +64,7 @@ type CreateInput struct {
 	DryRun           bool
 }
 
-func Create(input CreateInput) (*v1beta1.TargetGroupBinding, error) {
+func Apply(input ApplyInput) (*v1beta1.TargetGroupBinding, error) {
 	clientset, err := clclient.NewClientSet()
 	if err != nil {
 		return nil, okraerror.New(err)
@@ -80,9 +83,18 @@ func Create(input CreateInput) (*v1beta1.TargetGroupBinding, error) {
 	}
 
 	var binding v1beta1.TargetGroupBinding
+	var bindingExists bool
 
-	binding.Name = input.Name
-	binding.Namespace = input.Namespace
+	if err := client.Get(ctx, types.NamespacedName{Namespace: input.Namespace, Name: input.Name}, &binding); err != nil {
+		if !errors.IsNotFound(err) {
+			return nil, err
+		}
+
+		binding.Name = input.Name
+		binding.Namespace = input.Namespace
+	} else {
+		bindingExists = true
+	}
 	binding.Labels = input.Labels
 	binding.Spec.TargetGroupARN = input.TargetGroupARN
 
@@ -91,9 +103,14 @@ func Create(input CreateInput) (*v1beta1.TargetGroupBinding, error) {
 	if input.DryRun {
 		dryRun = []string{metav1.DryRunAll}
 	}
-
-	if err := client.Create(ctx, &binding, &runtimeclient.CreateOptions{DryRun: dryRun}); err != nil {
-		return nil, okraerror.New(err)
+	if bindingExists {
+		if err := client.Update(ctx, &binding); err != nil {
+			return nil, okraerror.New(fmt.Errorf("updating binding: %w", err))
+		}
+	} else {
+		if err := client.Create(ctx, &binding, &runtimeclient.CreateOptions{DryRun: dryRun}); err != nil {
+			return nil, okraerror.New(fmt.Errorf("creating binding: %w", err))
+		}
 	}
 
 	return &binding, nil
