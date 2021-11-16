@@ -113,7 +113,7 @@ func CreateCluster(config CreateClusterInput) error {
 		return err
 	}
 
-	fmt.Printf("Cluster secert %q created successfully\n", name)
+	fmt.Printf("Cluster secret %q created successfully\n", name)
 
 	return nil
 }
@@ -146,10 +146,10 @@ func CreateMissingClusters(config SyncInput) error {
 					return okraerror.New(err)
 				}
 			} else {
-				fmt.Printf("Cluster secert %q created successfully\n", object.Name)
+				fmt.Printf("Cluster secret %q created successfully\n", object.Name)
 			}
 		} else {
-			fmt.Printf("Cluster secert %q created successfully (Dry Run)\n", object.Name)
+			fmt.Printf("Cluster secret %q created successfully (Dry Run)\n", object.Name)
 		}
 	}
 
@@ -180,7 +180,7 @@ func DeleteCluster(config DeleteClusterInput) error {
 		return err
 	}
 
-	fmt.Printf("Cluster secert %q deleted successfully\n", name)
+	fmt.Printf("Cluster secret %q deleted successfully\n", name)
 
 	return nil
 }
@@ -227,7 +227,7 @@ func DeleteOutdatedClusters(config SyncInput) error {
 
 		if _, desired := desiredClusters[name]; !desired {
 			if dryRun {
-				fmt.Printf("Cluster secert %q deleted successfully (Dry Run)\n", name)
+				fmt.Printf("Cluster secret %q deleted successfully (Dry Run)\n", name)
 			} else {
 				// Manage resource
 				err := kubeclient.Delete(context.TODO(), name, metav1.DeleteOptions{})
@@ -235,7 +235,7 @@ func DeleteOutdatedClusters(config SyncInput) error {
 					return err
 				}
 
-				fmt.Printf("Cluster secert %q deleted successfully\n", name)
+				fmt.Printf("Cluster secret %q deleted successfully\n", name)
 			}
 		}
 	}

@@ -124,7 +124,7 @@ func CreateMissingAWSTargetGroups(config SyncInput) ([]SyncResult, error) {
 
 	managementClient, err := clclient.New()
 	if err != nil {
-		return nil, err
+		return nil, xerrors.Errorf("creating cr clientset: %w", err)
 	}
 
 	var secrets []corev1.Secret
@@ -148,7 +148,7 @@ func CreateMissingAWSTargetGroups(config SyncInput) ([]SyncResult, error) {
 	for _, secret := range secrets {
 		client, err := clclient.NewFromClusterSecret(secret)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("creating cr client from cluster secret: %w", err)
 		}
 
 		var bindings v1beta1.TargetGroupBindingList
@@ -240,7 +240,7 @@ func Delete(config DeleteInput) error {
 		return err
 	}
 
-	fmt.Printf("Cluster secert %q deleted successfully\n", name)
+	fmt.Printf("Cluster secret %q deleted successfully\n", name)
 
 	return nil
 }

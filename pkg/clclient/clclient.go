@@ -51,7 +51,7 @@ func NewFromRestConfig(config *rest.Config) (client.Client, error) {
 		Scheme: scheme,
 	})
 	if err != nil {
-		return nil, okraerror.New(err)
+		return nil, okraerror.New(fmt.Errorf("creating client from rest config: %w", err))
 	}
 
 	return cl, nil
@@ -97,7 +97,7 @@ func NewFromBytes(kubeconfig []byte) (client.Client, error) {
 func NewFromClusterSecret(clusterSecret corev1.Secret) (client.Client, error) {
 	cluster, err := SecretToCluster(&clusterSecret)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("secret to cluster: %w", err)
 	}
 
 	if cluster.Config.AWSAuthConfig != nil && cluster.Config.AWSAuthConfig.ClusterName != "" {
