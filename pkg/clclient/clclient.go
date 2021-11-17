@@ -43,7 +43,9 @@ func Scheme() *runtime.Scheme {
 }
 
 func New() (client.Client, error) {
-	return NewFromRestConfig(config.GetConfigOrDie())
+	restConfig := config.GetConfigOrDie()
+	log.Infof("%+v\n", restConfig)
+	return NewFromRestConfig(restConfig)
 }
 
 func NewFromRestConfig(config *rest.Config) (client.Client, error) {

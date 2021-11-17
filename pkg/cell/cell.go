@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 
 	rolloutsv1alpha1 "github.com/mumoshu/okra/api/rollouts/v1alpha1"
@@ -59,6 +60,7 @@ func Sync(config SyncInput) error {
 	var albConfigExists bool
 
 	if err := managementClient.Get(ctx, types.NamespacedName{Namespace: config.NS, Name: config.Name}, &albConfig); err != nil {
+		log.Printf("%v\n", err)
 		if !kerrors.IsNotFound(err) {
 			return err
 		}
@@ -96,6 +98,8 @@ func Sync(config SyncInput) error {
 		threshold = int(*config.Spec.Replicas)
 	}
 
+	log.Printf("cell=%s/%s, albConfigExists=%v, tgSelector=%s, len(latestTGs)=%d, len(desiredTGs)=%d\n", config.NS, config.Name, albConfigExists, tgSelector.String(), len(latestTGs), len(desiredTGs))
+
 	if numLatestTGs != threshold {
 		return nil
 	}
@@ -128,6 +132,7 @@ func Sync(config SyncInput) error {
 		// Do update immediately without analysis or step update when
 		// it seems to have been triggered by an additional cluster that might have been
 		// added to deal with more load.
+		albConfig.Spec.Listener.Rule.Forward.TargetGroups = nil
 		for _, tg := range desiredTGs {
 			albConfig.Spec.Listener.Rule.Forward.TargetGroups = append(albConfig.Spec.Listener.Rule.Forward.TargetGroups, tg)
 		}
@@ -141,19 +146,21 @@ func Sync(config SyncInput) error {
 
 		// Ensure that the previous analysis run has been successful, if any
 
-		var stableTGsWeight, canaryTGsWeight int
+		var currentStableTGsWeight, stableTGsWeight, canaryTGsWeight int
 
 		var stableTGs []okrav1alpha1.ForwardTargetGroup
 		for _, tg := range albConfig.Spec.Listener.Rule.Forward.TargetGroups {
-			stableTGsWeight += tg.Weight
-
 			tg := tg
 
 			if _, ok := desiredTGs[tg.Name]; ok {
 				continue
 			}
 
+			stableTGsWeight += tg.Weight
+
 			stableTGs = append(stableTGs, tg)
+
+			currentStableTGsWeight += tg.Weight
 		}
 
 		var updatedTGs []okrav1alpha1.ForwardTargetGroup
@@ -291,6 +298,10 @@ func Sync(config SyncInput) error {
 						}
 					} else if step.SetWeight != nil {
 						stableTGsWeight -= int(*step.SetWeight)
+
+						if stableTGsWeight < currentStableTGsWeight {
+							break STEPS
+						}
 					} else if step.Pause != nil {
 						// TODO List Pause resource and break if it isn't expired yet
 					} else {
@@ -310,6 +321,8 @@ func Sync(config SyncInput) error {
 			if stableTGsWeight < 0 {
 				return fmt.Errorf("stable tgs weight cannot be less than 0: %v", stableTGsWeight)
 			}
+
+			log.Printf("stable weight: %d -> %d\n", currentStableTGsWeight, stableTGsWeight)
 
 			// Do update by step weight
 
