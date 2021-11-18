@@ -128,31 +128,24 @@ func Sync(config SyncInput) error {
 		if err := managementClient.Create(ctx, &albConfig); err != nil {
 			return fmt.Errorf("creating albconfig: %w", err)
 		}
-	} else if len(desiredTGs) != len(albConfig.Spec.Listener.Rule.Forward.TargetGroups) {
-		// Do update immediately without analysis or step update when
-		// it seems to have been triggered by an additional cluster that might have been
-		// added to deal with more load.
-		albConfig.Spec.Listener.Rule.Forward.TargetGroups = nil
-		for _, tg := range desiredTGs {
-			albConfig.Spec.Listener.Rule.Forward.TargetGroups = append(albConfig.Spec.Listener.Rule.Forward.TargetGroups, tg)
-		}
-
-		if err := managementClient.Update(ctx, &albConfig); err != nil {
-			return fmt.Errorf("updating albconfig: %w", err)
-		}
 	} else {
 		// This is a standard cell update for releasing a new app/cluster version.
 		// Do a canary release.
 
 		// Ensure that the previous analysis run has been successful, if any
 
-		var currentStableTGsWeight, stableTGsWeight, canaryTGsWeight int
+		var currentStableTGsWeight, currentCanaryTGsWeight, stableTGsWeight, canaryTGsWeight int
 
-		var stableTGs []okrav1alpha1.ForwardTargetGroup
+		var (
+			stableTGs []okrav1alpha1.ForwardTargetGroup
+			canaryTGs []okrav1alpha1.ForwardTargetGroup
+		)
 		for _, tg := range albConfig.Spec.Listener.Rule.Forward.TargetGroups {
 			tg := tg
 
 			if _, ok := desiredTGs[tg.Name]; ok {
+				currentCanaryTGsWeight += tg.Weight
+				canaryTGs = append(canaryTGs, tg)
 				continue
 			}
 
@@ -161,6 +154,21 @@ func Sync(config SyncInput) error {
 			stableTGs = append(stableTGs, tg)
 
 			currentStableTGsWeight += tg.Weight
+		}
+
+		// TODO check desired TGs version and canary TGs version and do immediate update only when the version matches?
+		if len(desiredTGs) != len(canaryTGs) {
+			// Do update immediately without analysis or step update when
+			// it seems to have been triggered by an additional cluster that might have been
+			// added to deal with more load.
+			albConfig.Spec.Listener.Rule.Forward.TargetGroups = nil
+			for _, tg := range desiredTGs {
+				albConfig.Spec.Listener.Rule.Forward.TargetGroups = append(albConfig.Spec.Listener.Rule.Forward.TargetGroups, tg)
+			}
+
+			if err := managementClient.Update(ctx, &albConfig); err != nil {
+				return fmt.Errorf("updating albconfig: %w", err)
+			}
 		}
 
 		var updatedTGs []okrav1alpha1.ForwardTargetGroup
@@ -355,6 +363,18 @@ func Sync(config SyncInput) error {
 			canaryTGsWeight = 100 - stableTGsWeight
 
 			if canaryTGsWeight > 0 {
+				var canaryVersion string
+				for _, tg := range latestTGs {
+					for _, l := range labelKeys {
+						v, ok := tg.Labels[l]
+						if ok {
+							canaryVersion = v
+							break
+						}
+					}
+				}
+				log.Printf("canary(%s) weight: %d -> %d\n", canaryVersion, currentCanaryTGsWeight, canaryTGsWeight)
+
 				updatedCanatyTGs := map[string]okrav1alpha1.ForwardTargetGroup{}
 
 				for i, tg := range latestTGs {
@@ -376,6 +396,13 @@ func Sync(config SyncInput) error {
 				}
 			}
 		}
+
+		updated := make(map[string]int)
+		for _, tg := range updatedTGs {
+			updated[tg.Name] = tg.Weight
+		}
+
+		log.Printf("updating target groups and weights to: %v\n", updated)
 
 		albConfig.Spec.Listener.Rule.Forward.TargetGroups = updatedTGs
 
