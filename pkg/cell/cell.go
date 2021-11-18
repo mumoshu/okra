@@ -233,11 +233,8 @@ func Sync(config SyncInput) error {
 							return err
 						}
 
-						if len(analysisRunList.Items) > 1 {
-							return errors.New("too many analysis runs")
-						}
-
-						if len(analysisRunList.Items) == 0 {
+						switch len(analysisRunList.Items) {
+						case 0:
 							tmpl := step.Analysis.Templates[0]
 
 							var args []rolloutsv1alpha1.Argument
@@ -295,14 +292,24 @@ func Sync(config SyncInput) error {
 								return err
 							}
 
-							return nil
-						}
+							log.Printf("Created analysisrun %s", ar.Name)
+						case 1:
+							for _, ar := range analysisRunList.Items {
+								if ar.Status.Phase != rolloutsv1alpha1.AnalysisPhaseSuccessful {
+									if ar.Status.Phase == rolloutsv1alpha1.AnalysisPhaseFailed {
+										// TODO Suspend and mark it as permanent failure when analysis run timed out
+										log.Printf("AnalysisRun %s failed", ar.Name)
+										break STEPS
+									}
 
-						for _, ar := range analysisRunList.Items {
-							if ar.Status.Phase != rolloutsv1alpha1.AnalysisPhaseSuccessful {
-								// We need to wait for this analysis run to succeed
-								break STEPS
+									log.Printf("Waiting for analysisrun %s of %s to become %s", ar.Name, ar.Status.Phase, rolloutsv1alpha1.AnalysisPhaseSuccessful)
+
+									// We need to wait for this analysis run to succeed
+									break STEPS
+								}
 							}
+						default:
+							return errors.New("too many analysis runs")
 						}
 					} else if step.SetWeight != nil {
 						stableTGsWeight -= int(*step.SetWeight)
