@@ -77,7 +77,7 @@ func Sync(config SyncInput) error {
 		labelKeys = []string{okrav1alpha1.DefaultVersionLabelKey}
 	}
 
-	latestTGs, err := awstargetgroupset.ListLatestAWSTargetGroups(awstargetgroupset.ListLatestAWSTargetGroupsInput{
+	_, latestTGs, err := awstargetgroupset.ListLatestAWSTargetGroups(awstargetgroupset.ListLatestAWSTargetGroupsInput{
 		ListAWSTargetGroupsInput: awstargetgroupset.ListAWSTargetGroupsInput{
 			NS:       config.NS,
 			Selector: tgSelector.String(),

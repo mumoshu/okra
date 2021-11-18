@@ -192,6 +192,7 @@ func InitListAWSTargetGroupsFlags(flag *pflag.FlagSet, c *awstargetgroupset.List
 func InitListLatestAWSTargetGroupsFlags(flag *pflag.FlagSet, c *awstargetgroupset.ListLatestAWSTargetGroupsInput) func() *awstargetgroupset.ListLatestAWSTargetGroupsInput {
 	flag.StringVar(&c.NS, "namespace", "", "Namespace of AWSTargetGroup resources")
 	flag.StringVar(&c.Selector, "selector", "", "Label selector for AWSTargetGroup resources")
+	flag.StringVar(&c.Version, "version", "", "Version number without the v prefix of the AWSTargetGroup resources. If omitted, it will fetch all the AWSTargetGroup resources and use the latest version found")
 	flag.StringSliceVar(&c.SemverLabelKeys, "semver-label-key", []string{okrav1alpha1.DefaultVersionLabelKey}, "The key of the label as a container of the version number of the group")
 
 	return func() *awstargetgroupset.ListLatestAWSTargetGroupsInput {
@@ -398,7 +399,7 @@ func Run() error {
 	listLatestTargetGroups := &cobra.Command{
 		Use: "list-latest-awstargetgroups",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			bindings, err := awstargetgroupset.ListLatestAWSTargetGroups(*listLatestTargetGroupsInput())
+			_, bindings, err := awstargetgroupset.ListLatestAWSTargetGroups(*listLatestTargetGroupsInput())
 
 			for _, b := range bindings {
 				fmt.Fprintf(os.Stdout, "%+v\n", b)

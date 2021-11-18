@@ -413,17 +413,19 @@ type ListLatestAWSTargetGroupsInput struct {
 	ListAWSTargetGroupsInput
 
 	SemverLabelKeys []string
+	Version         string
 }
 
 type ListAWSTargetGroupsInput struct {
 	NS       string
 	Selector string
+	Version  string
 }
 
-func ListLatestAWSTargetGroups(config ListLatestAWSTargetGroupsInput) ([]okrav1alpha1.AWSTargetGroup, error) {
+func ListLatestAWSTargetGroups(config ListLatestAWSTargetGroupsInput) (*semver.Version, []okrav1alpha1.AWSTargetGroup, error) {
 	groups, err := ListAWSTargetGroups(config.ListAWSTargetGroupsInput)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	type entry struct {
@@ -433,55 +435,65 @@ func ListLatestAWSTargetGroups(config ListLatestAWSTargetGroupsInput) ([]okrav1a
 
 	labelKeys := config.SemverLabelKeys
 	if len(labelKeys) == 0 {
-		return nil, fmt.Errorf("missing semver label key")
+		return nil, nil, fmt.Errorf("missing semver label key")
 	}
 
 	var latestVer *semver.Version
 
+	if config.Version != "" {
+		v, err := semver.Parse(config.Version)
+		if err != nil {
+			return nil, nil, err
+		}
+		latestVer = &v
+	}
+
 	versionedGroups := map[string]entry{}
 
-	for _, g := range groups {
-		g := g
+	if latestVer == nil {
+		for _, g := range groups {
+			g := g
 
-		var verStr string
+			var verStr string
 
-		for _, labelKey := range labelKeys {
-			verStr = g.Labels[labelKey]
-			if verStr != "" {
-				break
+			for _, labelKey := range labelKeys {
+				verStr = g.Labels[labelKey]
+				if verStr != "" {
+					break
+				}
 			}
-		}
 
-		if verStr == "" {
-			return nil, fmt.Errorf("no semver label found on group: %v", g)
-		}
+			if verStr == "" {
+				return nil, nil, fmt.Errorf("no semver label found on group: %v", g)
+			}
 
-		ver, err := semver.Parse(verStr)
-		if err != nil {
-			return nil, err
+			ver, err := semver.Parse(verStr)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			if latestVer == nil {
+				latestVer = &ver
+			} else if latestVer.LT(ver) {
+				latestVer = &ver
+			}
+
+			e := versionedGroups[ver.String()]
+
+			e.ver = ver
+			e.groups = append(e.groups, g)
+
+			versionedGroups[ver.String()] = e
 		}
 
 		if latestVer == nil {
-			latestVer = &ver
-		} else if latestVer.LT(ver) {
-			latestVer = &ver
+			return nil, nil, nil
 		}
-
-		e := versionedGroups[ver.String()]
-
-		e.ver = ver
-		e.groups = append(e.groups, g)
-
-		versionedGroups[ver.String()] = e
-	}
-
-	if latestVer == nil {
-		return nil, nil
 	}
 
 	latest := versionedGroups[latestVer.String()]
 
-	return latest.groups, nil
+	return latestVer, latest.groups, nil
 }
 
 func ListAWSTargetGroups(config ListAWSTargetGroupsInput) ([]okrav1alpha1.AWSTargetGroup, error) {
