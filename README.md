@@ -17,7 +17,18 @@ In a standard scenario, a system update with `okra` would like the below.
 
 `okra` (currently) integrates with AWS ALB and NLB and target groups for traffic management, CloudWatch Metrics and Datadog for canary analysis.
 
-`okra` currently works on AWS only, but the design and implementation is generic enough to be capable of adding more IaaS supports. Any contribution around that is welcomed.
+`okra` currently works on AWS only, but the design and the implementation of it is generic enough to be capable of adding more IaaS supports. Any contribution around that is welcomed.
+
+Here's the list of possible additional IaaSes that the original author (@mumoshu) has thought of:
+
+- Cluster API
+- GKE
+
+Here's the list of possible additional loadbalancers:
+
+- Envoy
+- [Istio Ingerss Gateway](https://istio.io/latest/docs/tasks/traffic-management/ingress/ingress-control/)
+- [ingress-nginx](https://kubernetes.github.io/ingress-nginx/)
 
 ## How it works
 
