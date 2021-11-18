@@ -113,6 +113,8 @@ See [crd.md](crd.md) for more documentation and details of each CRD.
 
 `okra` is the CLI application that consists of the controller and other utility commands for testing.
 
+Every single `okra` controller's functionality is exposed via respective `okra` CLI commands. It may be even possible to build your own CI job that replaces `okra` out of those commands!
+
 See [CLI](/cli.md) for more information and its usage.
 
 ## Related Projects
