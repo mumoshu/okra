@@ -77,7 +77,7 @@ func Sync(config SyncInput) error {
 		labelKeys = []string{okrav1alpha1.DefaultVersionLabelKey}
 	}
 
-	_, latestTGs, err := awstargetgroupset.ListLatestAWSTargetGroups(awstargetgroupset.ListLatestAWSTargetGroupsInput{
+	desiredVer, latestTGs, err := awstargetgroupset.ListLatestAWSTargetGroups(awstargetgroupset.ListLatestAWSTargetGroupsInput{
 		ListAWSTargetGroupsInput: awstargetgroupset.ListAWSTargetGroupsInput{
 			NS:       config.NS,
 			Selector: tgSelector.String(),
@@ -86,6 +86,30 @@ func Sync(config SyncInput) error {
 	})
 	if err != nil {
 		return err
+	}
+
+	currentTGs, err := awstargetgroupset.ListAWSTargetGroups(awstargetgroupset.ListAWSTargetGroupsInput{
+		NS:       config.NS,
+		Selector: tgSelector.String(),
+	})
+	if err != nil {
+		return err
+	}
+
+	currentTGNameToVer := make(map[string]string)
+	for _, tg := range currentTGs {
+		var ver string
+		for _, l := range labelKeys {
+			v, ok := tg.Labels[l]
+			if ok {
+				ver = v
+				break
+			}
+		}
+
+		if ver != "" {
+			currentTGNameToVer[tg.Name] = ver
+		}
 	}
 
 	desiredTGs := map[string]okrav1alpha1.ForwardTargetGroup{}
@@ -128,18 +152,26 @@ func Sync(config SyncInput) error {
 		if err := managementClient.Create(ctx, &albConfig); err != nil {
 			return fmt.Errorf("creating albconfig: %w", err)
 		}
+
+		updated := make(map[string]int)
+		for _, tg := range desiredTGs {
+			updated[tg.Name] = tg.Weight
+		}
+
+		log.Printf("Created target groups and weights to: %v", updated)
 	} else {
 		// This is a standard cell update for releasing a new app/cluster version.
 		// Do a canary release.
 
 		// Ensure that the previous analysis run has been successful, if any
 
-		var currentStableTGsWeight, currentCanaryTGsWeight, stableTGsWeight, canaryTGsWeight int
+		var currentStableTGsWeight, currentCanaryTGsWeight, canaryTGsWeight int
 
 		var (
 			stableTGs []okrav1alpha1.ForwardTargetGroup
 			canaryTGs []okrav1alpha1.ForwardTargetGroup
 		)
+
 		for _, tg := range albConfig.Spec.Listener.Rule.Forward.TargetGroups {
 			tg := tg
 
@@ -149,15 +181,25 @@ func Sync(config SyncInput) error {
 				continue
 			}
 
-			stableTGsWeight += tg.Weight
-
 			stableTGs = append(stableTGs, tg)
 
 			currentStableTGsWeight += tg.Weight
 		}
 
+		var desiredAndCanaryAreSameVersion bool
+
+		if len(canaryTGs) > 0 {
+			for _, tg := range canaryTGs {
+				ver := currentTGNameToVer[tg.Name]
+				if ver == desiredVer.String() {
+					desiredAndCanaryAreSameVersion = true
+					break
+				}
+			}
+		}
+
 		// TODO check desired TGs version and canary TGs version and do immediate update only when the version matches?
-		if len(desiredTGs) != len(canaryTGs) {
+		if desiredAndCanaryAreSameVersion && len(desiredTGs) != len(canaryTGs) {
 			// Do update immediately without analysis or step update when
 			// it seems to have been triggered by an additional cluster that might have been
 			// added to deal with more load.
@@ -169,25 +211,39 @@ func Sync(config SyncInput) error {
 			if err := managementClient.Update(ctx, &albConfig); err != nil {
 				return fmt.Errorf("updating albconfig: %w", err)
 			}
+
+			updated := make(map[string]int)
+			for _, tg := range desiredTGs {
+				updated[tg.Name] = tg.Weight
+			}
+
+			log.Printf("Updated target groups and weights to: %v", updated)
+
+			return nil
 		}
 
 		var updatedTGs []okrav1alpha1.ForwardTargetGroup
 
+		var passedAllCanarySteps bool
+
+		// TODO Use client.MatchingLabels?
+		analysisRunLabelSelector, err := labels.Parse("cell" + "=" + config.Name)
+		if err != nil {
+			return err
+		}
+
+		desiredStableTGsWeight := 100
+
 		{
 			canarySteps := config.Spec.UpdateStrategy.Canary.Steps
 
-			var passedAllCanarySteps bool
+			passedAllCanarySteps = currentCanaryTGsWeight == 100
 
-			if len(canarySteps) > 0 {
+			if len(canarySteps) > 0 && !passedAllCanarySteps {
 				var analysisRunList rolloutsv1alpha1.AnalysisRunList
 
-				labelSelector, err := labels.Parse("cell" + "=" + config.Name)
-				if err != nil {
-					return err
-				}
-
 				if err := managementClient.List(ctx, &analysisRunList, &client.ListOptions{
-					LabelSelector: labelSelector,
+					LabelSelector: analysisRunLabelSelector,
 				}); err != nil {
 					return err
 				}
@@ -195,10 +251,14 @@ func Sync(config SyncInput) error {
 				var maxSuccessfulAnalysisRunStepIndex int
 				for _, ar := range analysisRunList.Items {
 					if ar.Status.Phase.Completed() {
-						stepIndexStr := ar.Annotations["okra.mumo.co/step-index"]
+						stepIndexStr, ok := ar.Labels["okra.mumo.co/step-index"]
+						if !ok {
+							log.Printf("AnalysisRun %q does not have as step-index label. Perhaps this is not the one managed by okra? Skipping.", ar.Name)
+							continue
+						}
 						stepIndex, err := strconv.Atoi(stepIndexStr)
 						if err != nil {
-							return err
+							return fmt.Errorf("parsing step index %q: %v", stepIndexStr, err)
 						}
 
 						if stepIndex > maxSuccessfulAnalysisRunStepIndex {
@@ -206,8 +266,6 @@ func Sync(config SyncInput) error {
 						}
 					}
 				}
-
-				stableTGsWeight = 100
 
 				const stepIndexLabel = "okra.mumo.co/step-index"
 
@@ -238,7 +296,7 @@ func Sync(config SyncInput) error {
 							tmpl := step.Analysis.Templates[0]
 
 							var args []rolloutsv1alpha1.Argument
-							var argsMap map[string]rolloutsv1alpha1.Argument
+							argsMap := make(map[string]rolloutsv1alpha1.Argument)
 
 							var at rolloutsv1alpha1.AnalysisTemplate
 							if err := managementClient.Get(ctx, types.NamespacedName{Namespace: config.NS, Name: tmpl.TemplateName}, &at); err != nil {
@@ -293,6 +351,8 @@ func Sync(config SyncInput) error {
 							}
 
 							log.Printf("Created analysisrun %s", ar.Name)
+
+							break STEPS
 						case 1:
 							for _, ar := range analysisRunList.Items {
 								if ar.Status.Phase != rolloutsv1alpha1.AnalysisPhaseSuccessful {
@@ -312,9 +372,9 @@ func Sync(config SyncInput) error {
 							return errors.New("too many analysis runs")
 						}
 					} else if step.SetWeight != nil {
-						stableTGsWeight -= int(*step.SetWeight)
+						desiredStableTGsWeight -= int(*step.SetWeight)
 
-						if stableTGsWeight < currentStableTGsWeight {
+						if desiredStableTGsWeight < currentStableTGsWeight {
 							break STEPS
 						}
 					} else if step.Pause != nil {
@@ -330,18 +390,18 @@ func Sync(config SyncInput) error {
 			}
 
 			if passedAllCanarySteps || len(canarySteps) == 0 {
-				stableTGsWeight = 0
+				desiredStableTGsWeight = 0
 			}
 
-			if stableTGsWeight < 0 {
-				return fmt.Errorf("stable tgs weight cannot be less than 0: %v", stableTGsWeight)
+			if desiredStableTGsWeight < 0 {
+				return fmt.Errorf("stable tgs weight cannot be less than 0: %v", desiredStableTGsWeight)
 			}
 
-			log.Printf("stable weight: %d -> %d\n", currentStableTGsWeight, stableTGsWeight)
+			log.Printf("stable weight: %d -> %d\n", currentStableTGsWeight, desiredStableTGsWeight)
 
 			// Do update by step weight
 
-			if stableTGsWeight > 0 {
+			if desiredStableTGsWeight > 0 {
 				numStableTGs := len(stableTGs)
 
 				updatedStableTGs := map[string]okrav1alpha1.ForwardTargetGroup{}
@@ -349,10 +409,10 @@ func Sync(config SyncInput) error {
 				for i, tg := range stableTGs {
 					tg := tg
 
-					weight := stableTGsWeight / numStableTGs
+					weight := desiredStableTGsWeight / numStableTGs
 
 					if i == numStableTGs-1 && numStableTGs > 1 {
-						weight = stableTGsWeight - (weight * (numStableTGs - 1))
+						weight = desiredStableTGsWeight - (weight * (numStableTGs - 1))
 					}
 
 					updatedStableTGs[tg.Name] = okrav1alpha1.ForwardTargetGroup{
@@ -367,7 +427,7 @@ func Sync(config SyncInput) error {
 				}
 			}
 
-			canaryTGsWeight = 100 - stableTGsWeight
+			canaryTGsWeight = 100 - desiredStableTGsWeight
 
 			if canaryTGsWeight > 0 {
 				var canaryVersion string
@@ -415,6 +475,20 @@ func Sync(config SyncInput) error {
 
 		if err := managementClient.Update(ctx, &albConfig); err != nil {
 			return err
+		}
+
+		if desiredStableTGsWeight == 0 && passedAllCanarySteps {
+			// Seems like we need to explicitly specify the namespace with client.InNamespace.
+			// Otherwise it results in `Error: the server could not find the requested resource (delete analysisruns.argoproj.io)`
+			if err := managementClient.DeleteAllOf(ctx, &rolloutsv1alpha1.AnalysisRun{}, client.InNamespace(config.NS), &client.DeleteAllOfOptions{
+				ListOptions: client.ListOptions{
+					LabelSelector: analysisRunLabelSelector,
+				},
+			}); err != nil {
+				return err
+			}
+
+			log.Printf("Deleted all analysis runs with %s", analysisRunLabelSelector)
 		}
 	}
 
