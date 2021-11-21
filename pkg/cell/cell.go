@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"time"
 
 	rolloutsv1alpha1 "github.com/mumoshu/okra/api/rollouts/v1alpha1"
 	okrav1alpha1 "github.com/mumoshu/okra/api/v1alpha1"
@@ -16,6 +17,11 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+const (
+	LabelKeyStepIndex = "okra.mumo.co/step-index"
+	LabelKeyCell      = "cell"
 )
 
 type Provider struct {
@@ -227,7 +233,7 @@ func Sync(config SyncInput) error {
 		var passedAllCanarySteps bool
 
 		// TODO Use client.MatchingLabels?
-		analysisRunLabelSelector, err := labels.Parse("cell" + "=" + config.Name)
+		ownedByCellLabelSelector, err := labels.Parse(LabelKeyCell + "=" + config.Name)
 		if err != nil {
 			return err
 		}
@@ -243,7 +249,7 @@ func Sync(config SyncInput) error {
 				var analysisRunList rolloutsv1alpha1.AnalysisRunList
 
 				if err := managementClient.List(ctx, &analysisRunList, &client.ListOptions{
-					LabelSelector: analysisRunLabelSelector,
+					LabelSelector: ownedByCellLabelSelector,
 				}); err != nil {
 					return err
 				}
@@ -251,7 +257,7 @@ func Sync(config SyncInput) error {
 				var maxSuccessfulAnalysisRunStepIndex int
 				for _, ar := range analysisRunList.Items {
 					if ar.Status.Phase.Completed() {
-						stepIndexStr, ok := ar.Labels["okra.mumo.co/step-index"]
+						stepIndexStr, ok := ar.Labels[LabelKeyStepIndex]
 						if !ok {
 							log.Printf("AnalysisRun %q does not have as step-index label. Perhaps this is not the one managed by okra? Skipping.", ar.Name)
 							continue
@@ -267,10 +273,10 @@ func Sync(config SyncInput) error {
 					}
 				}
 
-				const stepIndexLabel = "okra.mumo.co/step-index"
-
 			STEPS:
 				for stepIndex, step := range canarySteps {
+					stepIndexStr := strconv.Itoa(stepIndex)
+
 					if step.Analysis != nil {
 						//
 						// Ensure that the previous analysis run has been successful, if any
@@ -278,9 +284,7 @@ func Sync(config SyncInput) error {
 
 						var analysisRunList rolloutsv1alpha1.AnalysisRunList
 
-						stepIndexStr := strconv.Itoa(stepIndex)
-
-						labelSelector, err := labels.Parse(stepIndexLabel + "=" + stepIndexStr)
+						labelSelector, err := labels.Parse(LabelKeyStepIndex + "=" + stepIndexStr)
 						if err != nil {
 							return err
 						}
@@ -336,8 +340,8 @@ func Sync(config SyncInput) error {
 									Namespace: config.NS,
 									Name:      fmt.Sprintf("%s-%s-%d", config.Name, tmpl.TemplateName, stepIndex),
 									Labels: map[string]string{
-										stepIndexLabel: stepIndexStr,
-										"cell":         config.Name,
+										LabelKeyStepIndex: stepIndexStr,
+										LabelKeyCell:      config.Name,
 									},
 								},
 								Spec: rolloutsv1alpha1.AnalysisRunSpec{
@@ -379,6 +383,63 @@ func Sync(config SyncInput) error {
 						}
 					} else if step.Pause != nil {
 						// TODO List Pause resource and break if it isn't expired yet
+						var pauseList okrav1alpha1.PauseList
+
+						ns := config.NS
+
+						labels := map[string]string{
+							LabelKeyStepIndex: stepIndexStr,
+							LabelKeyCell:      config.Name,
+						}
+
+						if err := managementClient.List(ctx, &pauseList, client.InNamespace(ns), client.MatchingLabels(labels)); err != nil {
+							return err
+						}
+
+						switch c := len(pauseList.Items); c {
+						case 0:
+							t := metav1.Time{
+								Time: time.Now().Add(time.Duration(time.Second.Nanoseconds() * int64(step.Pause.DurationSeconds()))),
+							}
+
+							pause := okrav1alpha1.Pause{
+								ObjectMeta: metav1.ObjectMeta{
+									Namespace: ns,
+									Name:      fmt.Sprintf("%s-%d-%s", config.Name, stepIndex, "pause"),
+									Labels:    labels,
+								},
+								Spec: okrav1alpha1.PauseSpec{
+									ExpireTime: t,
+								},
+							}
+
+							if err := managementClient.Create(ctx, &pause); err != nil {
+								return err
+							}
+
+							log.Printf("Initiated pause %s until %s", pause.Name, t)
+
+							break STEPS
+						case 1:
+							pause := pauseList.Items[0]
+
+							switch phase := pause.Status.Phase; phase {
+							case okrav1alpha1.PausePhaseCancelled:
+								log.Printf("Observed that pause %s had been cancelled. Continuing to the next step", pause.Name)
+							case okrav1alpha1.PausePhaseExpired:
+								log.Printf("Observed that pause %s had expired. Continuing to the next step", pause.Name)
+							case okrav1alpha1.PausePhaseStarted:
+								log.Printf("Still waiting for pause %s to expire or get cancelled", pause.Name)
+								break STEPS
+							case "":
+								log.Printf("Still waiting for pause %s to start", pause.Name)
+								break STEPS
+							default:
+								return fmt.Errorf("unexpected pause phase: %s", phase)
+							}
+						default:
+							return fmt.Errorf("unexpected number of pauses found: %d", c)
+						}
 					} else {
 						return fmt.Errorf("steps[%d]: only setWeight, analysis, and pause step are supported. got %v", stepIndex, step)
 					}
@@ -482,13 +543,23 @@ func Sync(config SyncInput) error {
 			// Otherwise it results in `Error: the server could not find the requested resource (delete analysisruns.argoproj.io)`
 			if err := managementClient.DeleteAllOf(ctx, &rolloutsv1alpha1.AnalysisRun{}, client.InNamespace(config.NS), &client.DeleteAllOfOptions{
 				ListOptions: client.ListOptions{
-					LabelSelector: analysisRunLabelSelector,
+					LabelSelector: ownedByCellLabelSelector,
 				},
 			}); err != nil {
 				return err
 			}
 
-			log.Printf("Deleted all analysis runs with %s", analysisRunLabelSelector)
+			log.Printf("Deleted all analysis runs with %s, if any", ownedByCellLabelSelector)
+
+			if err := managementClient.DeleteAllOf(ctx, &okrav1alpha1.Pause{}, client.InNamespace(config.NS), &client.DeleteAllOfOptions{
+				ListOptions: client.ListOptions{
+					LabelSelector: ownedByCellLabelSelector,
+				},
+			}); err != nil {
+				return err
+			}
+
+			log.Printf("Deleted all pauses with %s as completed, if any", ownedByCellLabelSelector)
 		}
 	}
 

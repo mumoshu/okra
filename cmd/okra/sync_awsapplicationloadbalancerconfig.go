@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
-func newSyncAWSApplicationLoadBalancerConfigCommand() *cobra.Command {
+func syncAWSApplicationLoadBalancerConfigCommand() *cobra.Command {
 	var syncInput func() *awsapplicationloadbalancer.SyncInput
 	cmd := &cobra.Command{
 		Use: "sync-awsapplicationloadbalancerconfig",

@@ -411,8 +411,11 @@ func Run() error {
 	listLatestTargetGroupsInput = InitListLatestAWSTargetGroupsFlags(listLatestTargetGroups.Flags(), &awstargetgroupset.ListLatestAWSTargetGroupsInput{})
 	cmd.AddCommand(listLatestTargetGroups)
 
-	cmd.AddCommand(newSyncAWSApplicationLoadBalancerConfigCommand())
-	cmd.AddCommand(newSyncCellCommand())
+	cmd.AddCommand(syncAWSApplicationLoadBalancerConfigCommand())
+	cmd.AddCommand(syncCellCommand())
+	cmd.AddCommand(syncPauseCommand())
+	cmd.AddCommand(cancelPauseCommand())
+	cmd.AddCommand(updateAnalysisRunCommand())
 
 	var runAnalysisInput func() *analysis.RunInput
 	runAnalysis := &cobra.Command{

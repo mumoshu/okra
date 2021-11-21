@@ -14,7 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-func newSyncCellCommand() *cobra.Command {
+func syncCellCommand() *cobra.Command {
 	var syncInput func() *cell.SyncInput
 	cmd := &cobra.Command{
 		Use: "sync-cell",
