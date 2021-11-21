@@ -41,7 +41,7 @@ type SyncInput struct {
 	NS   string
 	Name string
 
-	Spec okrav1alpha1.CellSpec
+	Cell *okrav1alpha1.Cell
 
 	Scheme *runtime.Scheme
 	Client client.Client
@@ -55,34 +55,38 @@ func Sync(config SyncInput) error {
 		return err
 	}
 
-	albListenerARN := config.Spec.Ingress.AWSApplicationLoadBalancer.ListenerARN
-	tgSelectorMatchLabels := config.Spec.Ingress.AWSApplicationLoadBalancer.TargetGroupSelector
+	var cell okrav1alpha1.Cell
+
+	if config.Cell != nil {
+		cell = *config.Cell
+	} else {
+		if err := managementClient.Get(ctx, types.NamespacedName{Namespace: config.NS, Name: config.Name}, &cell); err != nil {
+			return err
+		}
+	}
+
+	albListenerARN := cell.Spec.Ingress.AWSApplicationLoadBalancer.ListenerARN
+	tgSelectorMatchLabels := cell.Spec.Ingress.AWSApplicationLoadBalancer.TargetGroupSelector
 	tgSelector := labels.SelectorFromSet(tgSelectorMatchLabels.MatchLabels)
 
 	var albConfig okrav1alpha1.AWSApplicationLoadBalancerConfig
 	var albConfigExists bool
 
-	var cell okrav1alpha1.Cell
-
-	if err := managementClient.Get(ctx, types.NamespacedName{Namespace: config.NS, Name: config.Name}, &cell); err != nil {
-		return err
-	}
-
-	if err := managementClient.Get(ctx, types.NamespacedName{Namespace: config.NS, Name: config.Name}, &albConfig); err != nil {
+	if err := managementClient.Get(ctx, types.NamespacedName{Namespace: cell.Namespace, Name: config.Name}, &albConfig); err != nil {
 		log.Printf("%v\n", err)
 		if !kerrors.IsNotFound(err) {
 			return err
 		}
 
-		albConfig.Namespace = config.NS
-		albConfig.Name = config.Name
+		albConfig.Namespace = cell.Namespace
+		albConfig.Name = cell.Name
 		albConfig.Spec.ListenerARN = albListenerARN
 		ctrl.SetControllerReference(&cell, &albConfig, scheme)
 	} else {
 		albConfigExists = true
 	}
 
-	labelKeys := config.Spec.Ingress.AWSApplicationLoadBalancer.TargetGroupSelector.VersionLabels
+	labelKeys := cell.Spec.Ingress.AWSApplicationLoadBalancer.TargetGroupSelector.VersionLabels
 	if len(labelKeys) == 0 {
 		labelKeys = []string{okrav1alpha1.DefaultVersionLabelKey}
 	}
@@ -128,8 +132,8 @@ func Sync(config SyncInput) error {
 
 	// Ensure there enough cluster replicas to start a canary release
 	threshold := 1
-	if config.Spec.Replicas != nil {
-		threshold = int(*config.Spec.Replicas)
+	if cell.Spec.Replicas != nil {
+		threshold = int(*cell.Spec.Replicas)
 	}
 
 	log.Printf("cell=%s/%s, albConfigExists=%v, tgSelector=%s, len(latestTGs)=%d, len(desiredTGs)=%d\n", config.NS, config.Name, albConfigExists, tgSelector.String(), len(latestTGs), len(desiredTGs))
@@ -245,7 +249,7 @@ func Sync(config SyncInput) error {
 		desiredStableTGsWeight := 100
 
 		{
-			canarySteps := config.Spec.UpdateStrategy.Canary.Steps
+			canarySteps := cell.Spec.UpdateStrategy.Canary.Steps
 
 			passedAllCanarySteps = currentCanaryTGsWeight == 100
 

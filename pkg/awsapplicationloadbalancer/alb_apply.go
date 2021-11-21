@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/elbv2"
 	"github.com/google/go-cmp/cmp"
 	"github.com/mumoshu/okra/api/v1alpha1"
+	"github.com/mumoshu/okra/pkg/awsclicompat"
 	"golang.org/x/xerrors"
 )
 
@@ -18,6 +19,9 @@ func Sync(d SyncInput) error {
 	log.SetFlags(log.Lshortfile)
 
 	sess := d.Session
+	if sess == nil {
+		sess = awsclicompat.NewSession("", "")
+	}
 
 	sess.Config.Endpoint = &d.Address
 
@@ -36,10 +40,12 @@ func Sync(d SyncInput) error {
 		return xerrors.Errorf("calling elbv2.DescribeRules: %w", err)
 	}
 
-	priority := d.Spec.Listener.Rule.Priority
+	priority := lr.Priority
 	if priority == 0 {
 		priority = DefaultPriority
 	}
+	lr.Priority = priority
+
 	priorityStr := strconv.Itoa(priority)
 
 	var rule *elbv2.Rule

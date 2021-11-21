@@ -96,7 +96,7 @@ func (r *CellReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	}
 
 	config := cell.SyncInput{
-		Spec:   cellResource.Spec,
+		Cell:   &cellResource,
 		Client: r.Client,
 		Scheme: r.Scheme,
 	}

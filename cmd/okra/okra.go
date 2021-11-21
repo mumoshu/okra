@@ -416,6 +416,7 @@ func Run() error {
 	cmd.AddCommand(syncPauseCommand())
 	cmd.AddCommand(cancelPauseCommand())
 	cmd.AddCommand(updateAnalysisRunCommand())
+	cmd.AddCommand(createOrUpdateCellCommand())
 
 	var runAnalysisInput func() *analysis.RunInput
 	runAnalysis := &cobra.Command{
