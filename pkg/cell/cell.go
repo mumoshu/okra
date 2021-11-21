@@ -137,7 +137,7 @@ func Sync(config SyncInput) error {
 		threshold = int(*cell.Spec.Replicas)
 	}
 
-	log.Printf("cell=%s/%s, albConfigExists=%v, tgSelector=%s, len(latestTGs)=%d, len(desiredTGs)=%d\n", config.NS, config.Name, albConfigExists, tgSelector.String(), len(latestTGs), len(desiredTGs))
+	log.Printf("cell=%s/%s, albConfigExists=%v, tgSelector=%s, len(latestTGs)=%d, len(desiredTGs)=%d\n", cell.Namespace, cell.Name, albConfigExists, tgSelector.String(), len(latestTGs), len(desiredTGs))
 
 	if numLatestTGs != threshold {
 		return nil
@@ -242,7 +242,7 @@ func Sync(config SyncInput) error {
 		var passedAllCanarySteps bool
 
 		// TODO Use client.MatchingLabels?
-		ownedByCellLabelSelector, err := labels.Parse(LabelKeyCell + "=" + config.Name)
+		ownedByCellLabelSelector, err := labels.Parse(LabelKeyCell + "=" + cell.Name)
 		if err != nil {
 			return err
 		}

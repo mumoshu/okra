@@ -242,13 +242,39 @@ func getRuleActions(destinations []v1alpha1.ForwardTargetGroup) []*elbv2.Action 
 		})
 	}
 
+	var singleTGARN *string
+
+	if len(tgs) == 1 {
+		singleTGARN = tgs[0].TargetGroupArn
+	}
+
 	ruleActions := []*elbv2.Action{
 		{
 			ForwardConfig: &elbv2.ForwardActionConfig{
-				TargetGroupStickinessConfig: nil,
-				TargetGroups:                tgs,
+				TargetGroupStickinessConfig: &elbv2.TargetGroupStickinessConfig{
+					// Apparently this is the default value.
+					// We need to explicitly set this on our desired state,
+					// or you end up consistent diff like the below on every reconcilation:
+					//
+					// ForwardConfig: &elbv2.ForwardActionConfig{
+					// - TargetGroupStickinessConfig: s"{\n  Enabled: false\n}",
+					// + TargetGroupStickinessConfig: nil,
+					Enabled: aws.Bool(false),
+				},
+				TargetGroups: tgs,
 			},
-			Type: aws.String("forward"),
+			// AWS shows tgs[0]'s ARN for this when len(tgs)==1.
+			// We have to replicate that behaviour on calculating the desired state here,
+			// or we end up consistent diff like the below on every reconcilation:
+			//
+			// &{
+			//    ... // 4 identical fields
+			//    Order:          nil,
+			//    RedirectConfig: nil,
+			// -  TargetGroupArn: &"arn:aws:elasticloadbalancing:REGION:ACCOUNT:targetgroup/TG_NAME/TG_ID",
+			// +  TargetGroupArn: nil,
+			TargetGroupArn: singleTGARN,
+			Type:           aws.String("forward"),
 		},
 	}
 
