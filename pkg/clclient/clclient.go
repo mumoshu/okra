@@ -44,7 +44,6 @@ func Scheme() *runtime.Scheme {
 
 func New() (client.Client, error) {
 	restConfig := config.GetConfigOrDie()
-	log.Infof("%+v\n", restConfig)
 	return NewFromRestConfig(restConfig)
 }
 
@@ -58,7 +57,7 @@ func Init(c client.Client, s *runtime.Scheme) (client.Client, *runtime.Scheme, e
 		}
 	}
 
-	if scheme == nil {
+	if s == nil {
 		s = Scheme()
 	}
 

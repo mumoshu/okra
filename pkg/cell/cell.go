@@ -50,7 +50,7 @@ type SyncInput struct {
 func Sync(config SyncInput) error {
 	ctx := context.TODO()
 
-	managementClient, scheme, err := clclient.Init(config.Client, config.Scheme)
+	runtimeClient, scheme, err := clclient.Init(config.Client, config.Scheme)
 	if err != nil {
 		return err
 	}
@@ -60,7 +60,7 @@ func Sync(config SyncInput) error {
 	if config.Cell != nil {
 		cell = *config.Cell
 	} else {
-		if err := managementClient.Get(ctx, types.NamespacedName{Namespace: config.NS, Name: config.Name}, &cell); err != nil {
+		if err := runtimeClient.Get(ctx, types.NamespacedName{Namespace: config.NS, Name: config.Name}, &cell); err != nil {
 			return err
 		}
 	}
@@ -72,7 +72,7 @@ func Sync(config SyncInput) error {
 	var albConfig okrav1alpha1.AWSApplicationLoadBalancerConfig
 	var albConfigExists bool
 
-	if err := managementClient.Get(ctx, types.NamespacedName{Namespace: cell.Namespace, Name: config.Name}, &albConfig); err != nil {
+	if err := runtimeClient.Get(ctx, types.NamespacedName{Namespace: cell.Namespace, Name: cell.Name}, &albConfig); err != nil {
 		log.Printf("%v\n", err)
 		if !kerrors.IsNotFound(err) {
 			return err
@@ -81,6 +81,7 @@ func Sync(config SyncInput) error {
 		albConfig.Namespace = cell.Namespace
 		albConfig.Name = cell.Name
 		albConfig.Spec.ListenerARN = albListenerARN
+		albConfig.Spec.Listener = cell.Spec.Ingress.AWSApplicationLoadBalancer.Listener
 		ctrl.SetControllerReference(&cell, &albConfig, scheme)
 	} else {
 		albConfigExists = true
@@ -163,7 +164,7 @@ func Sync(config SyncInput) error {
 			albConfig.Spec.Listener.Rule.Forward.TargetGroups = append(albConfig.Spec.Listener.Rule.Forward.TargetGroups, tg)
 		}
 
-		if err := managementClient.Create(ctx, &albConfig); err != nil {
+		if err := runtimeClient.Create(ctx, &albConfig); err != nil {
 			return fmt.Errorf("creating albconfig: %w", err)
 		}
 
@@ -222,7 +223,7 @@ func Sync(config SyncInput) error {
 				albConfig.Spec.Listener.Rule.Forward.TargetGroups = append(albConfig.Spec.Listener.Rule.Forward.TargetGroups, tg)
 			}
 
-			if err := managementClient.Update(ctx, &albConfig); err != nil {
+			if err := runtimeClient.Update(ctx, &albConfig); err != nil {
 				return fmt.Errorf("updating albconfig: %w", err)
 			}
 
@@ -256,7 +257,7 @@ func Sync(config SyncInput) error {
 			if len(canarySteps) > 0 && !passedAllCanarySteps {
 				var analysisRunList rolloutsv1alpha1.AnalysisRunList
 
-				if err := managementClient.List(ctx, &analysisRunList, &client.ListOptions{
+				if err := runtimeClient.List(ctx, &analysisRunList, &client.ListOptions{
 					LabelSelector: ownedByCellLabelSelector,
 				}); err != nil {
 					return err
@@ -297,7 +298,7 @@ func Sync(config SyncInput) error {
 							return err
 						}
 
-						if err := managementClient.List(ctx, &analysisRunList, &client.ListOptions{
+						if err := runtimeClient.List(ctx, &analysisRunList, &client.ListOptions{
 							LabelSelector: labelSelector,
 						}); err != nil {
 							return err
@@ -311,7 +312,7 @@ func Sync(config SyncInput) error {
 							argsMap := make(map[string]rolloutsv1alpha1.Argument)
 
 							var at rolloutsv1alpha1.AnalysisTemplate
-							if err := managementClient.Get(ctx, types.NamespacedName{Namespace: config.NS, Name: tmpl.TemplateName}, &at); err != nil {
+							if err := runtimeClient.Get(ctx, types.NamespacedName{Namespace: config.NS, Name: tmpl.TemplateName}, &at); err != nil {
 								return err
 							}
 
@@ -359,7 +360,7 @@ func Sync(config SyncInput) error {
 							}
 							ctrl.SetControllerReference(&cell, &ar, scheme)
 
-							if err := managementClient.Create(ctx, &ar); err != nil {
+							if err := runtimeClient.Create(ctx, &ar); err != nil {
 								return err
 							}
 
@@ -401,7 +402,7 @@ func Sync(config SyncInput) error {
 							LabelKeyCell:      config.Name,
 						}
 
-						if err := managementClient.List(ctx, &pauseList, client.InNamespace(ns), client.MatchingLabels(labels)); err != nil {
+						if err := runtimeClient.List(ctx, &pauseList, client.InNamespace(ns), client.MatchingLabels(labels)); err != nil {
 							return err
 						}
 
@@ -423,7 +424,7 @@ func Sync(config SyncInput) error {
 							}
 							ctrl.SetControllerReference(&cell, &pause, scheme)
 
-							if err := managementClient.Create(ctx, &pause); err != nil {
+							if err := runtimeClient.Create(ctx, &pause); err != nil {
 								return err
 							}
 
@@ -544,24 +545,25 @@ func Sync(config SyncInput) error {
 
 		albConfig.Spec.Listener.Rule.Forward.TargetGroups = updatedTGs
 
-		if err := managementClient.Update(ctx, &albConfig); err != nil {
+		if err := runtimeClient.Update(ctx, &albConfig); err != nil {
 			return err
 		}
 
 		if desiredStableTGsWeight == 0 && passedAllCanarySteps {
 			// Seems like we need to explicitly specify the namespace with client.InNamespace.
 			// Otherwise it results in `Error: the server could not find the requested resource (delete analysisruns.argoproj.io)`
-			if err := managementClient.DeleteAllOf(ctx, &rolloutsv1alpha1.AnalysisRun{}, client.InNamespace(config.NS), &client.DeleteAllOfOptions{
+			if err := runtimeClient.DeleteAllOf(ctx, &rolloutsv1alpha1.AnalysisRun{}, client.InNamespace(cell.Namespace), &client.DeleteAllOfOptions{
 				ListOptions: client.ListOptions{
 					LabelSelector: ownedByCellLabelSelector,
 				},
 			}); err != nil {
+				log.Printf("Failed deleting analysis runs: %v", err)
 				return err
 			}
 
 			log.Printf("Deleted all analysis runs with %s, if any", ownedByCellLabelSelector)
 
-			if err := managementClient.DeleteAllOf(ctx, &okrav1alpha1.Pause{}, client.InNamespace(config.NS), &client.DeleteAllOfOptions{
+			if err := runtimeClient.DeleteAllOf(ctx, &okrav1alpha1.Pause{}, client.InNamespace(cell.Namespace), &client.DeleteAllOfOptions{
 				ListOptions: client.ListOptions{
 					LabelSelector: ownedByCellLabelSelector,
 				},

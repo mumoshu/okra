@@ -34,6 +34,8 @@ func initApplyCellFlags(flag *pflag.FlagSet, c *cell.ApplyInput) func() *cell.Ap
 		targetGroupSelector okrav1alpha1.TargetGroupSelector
 		canarySteps         []string
 		matchLabels         []string
+		host                string
+		priority            int
 	)
 
 	flag.StringVar(&c.Cell.Namespace, "namespace", "", "Namespace of the target cell")
@@ -41,6 +43,8 @@ func initApplyCellFlags(flag *pflag.FlagSet, c *cell.ApplyInput) func() *cell.Ap
 	flag.StringVar(&listenerARN, "listener-arn", "", "ARN of the target AWS Application Load Balancer Listener that is used to receive all the traffic across cluster versions")
 	flag.StringSliceVar(&matchLabels, "match-label", []string{}, "KVs of labels that is used as target group selector")
 	flag.StringSliceVar(&targetGroupSelector.VersionLabels, "version-label", []string{okrav1alpha1.DefaultVersionLabelKey}, "Key of the label that is used to indicate the version number of the target group")
+	flag.StringVar(&host, "listener-rule-host", "", "Target host name specified in the AWS ALB listener rule condition")
+	flag.IntVar(&priority, "listener-rule-priority", 10, "Priority for the AWS ALB listener rule used for traffic management")
 	flag.IntVar(&replicas, "", 0, "")
 	flag.StringSliceVar(&canarySteps, "canary-steps", []string{}, "List of canary step definitions. Each step is delimited by a comma(,) and can be one of \"weight=INT\", \"pause=DURATION\", and \"analysis=TEMPLATE:arg1=val1:arg2=val2\"")
 
@@ -135,6 +139,12 @@ func initApplyCellFlags(flag *pflag.FlagSet, c *cell.ApplyInput) func() *cell.Ap
 		spec.Ingress.AWSApplicationLoadBalancer = &okrav1alpha1.CellIngressAWSApplicationLoadBalancer{
 			ListenerARN:         listenerARN,
 			TargetGroupSelector: targetGroupSelector,
+			Listener: okrav1alpha1.Listener{
+				Rule: okrav1alpha1.ListenerRule{
+					Priority: priority,
+					Hosts:    []string{host},
+				},
+			},
 		}
 
 		input := c

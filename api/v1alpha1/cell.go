@@ -68,11 +68,13 @@ const (
 
 type CellIngressAWSApplicationLoadBalancer struct {
 	ListenerARN         string              `json:"listenerARN,omitempty"`
+	Listener            Listener            `json:"listener,omitempty"`
 	TargetGroupSelector TargetGroupSelector `json:"targetGroupSelector,omitempty"`
 }
 
 type CellIngressAWSNetworkLoadBalancer struct {
-	ListenerARN         string              `json:"listenerARN,omitempty"`
+	ListenerARN string `json:"listenerARN,omitempty"`
+
 	TargetGroupSelector TargetGroupSelector `json:"targetGroupSelector,omitempty"`
 }
 

@@ -44,6 +44,57 @@ spec:
                 properties:
                   awsApplicationLoadBalancer:
                     properties:
+                      listener:
+                        properties:
+                          rule:
+                            properties:
+                              forward:
+                                properties:
+                                  targetGroups:
+                                    items:
+                                      properties:
+                                        arn:
+                                          type: string
+                                        name:
+                                          type: string
+                                        weight:
+                                          type: integer
+                                      type: object
+                                    type: array
+                                type: object
+                              headers:
+                                additionalProperties:
+                                  items:
+                                    type: string
+                                  type: array
+                                type: object
+                              hosts:
+                                items:
+                                  type: string
+                                type: array
+                              methods:
+                                items:
+                                  type: string
+                                type: array
+                              pathPatterns:
+                                items:
+                                  type: string
+                                type: array
+                              priority:
+                                description: Priority is the priority of the rule
+                                  in a ALB listener that is also used as a unique
+                                  key
+                                type: integer
+                              queryStrings:
+                                additionalProperties:
+                                  type: string
+                                type: object
+                              sourceIPs:
+                                items:
+                                  type: string
+                                type: array
+                            type: object
+                        type: object
                       listenerARN:
                         type: string
                       targetGroupSelector:
