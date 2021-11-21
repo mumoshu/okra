@@ -48,6 +48,23 @@ func New() (client.Client, error) {
 	return NewFromRestConfig(restConfig)
 }
 
+func Init(c client.Client, s *runtime.Scheme) (client.Client, *runtime.Scheme, error) {
+	if c == nil {
+		var err error
+
+		c, err = New()
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	if scheme == nil {
+		s = Scheme()
+	}
+
+	return c, s, nil
+}
+
 func NewFromRestConfig(config *rest.Config) (client.Client, error) {
 	cl, err := client.New(config, client.Options{
 		Scheme: scheme,

@@ -32,7 +32,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	//metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/mumoshu/okra/api/v1alpha1"
+	rolloutsv1alpha1 "github.com/mumoshu/okra/api/rollouts/v1alpha1"
+	okrav1alpha1 "github.com/mumoshu/okra/api/v1alpha1"
 	"github.com/mumoshu/okra/pkg/cell"
 )
 
@@ -55,7 +56,7 @@ func (r *CellReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	ctx := context.Background()
 	log := r.Log.WithValues("cell", req.NamespacedName)
 
-	var cellResource v1alpha1.Cell
+	var cellResource okrav1alpha1.Cell
 	if err := r.Get(ctx, req.NamespacedName, &cellResource); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -97,6 +98,7 @@ func (r *CellReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	config := cell.SyncInput{
 		Spec:   cellResource.Spec,
 		Client: r.Client,
+		Scheme: r.Scheme,
 	}
 
 	err := cell.Sync(config)
@@ -115,7 +117,9 @@ func (r *CellReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.Recorder = mgr.GetEventRecorderFor("cell-controller")
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1alpha1.Cell{}).
-		Owns(&v1alpha1.AWSApplicationLoadBalancerConfig{}).
+		For(&okrav1alpha1.Cell{}).
+		Owns(&okrav1alpha1.AWSApplicationLoadBalancerConfig{}).
+		Owns(&okrav1alpha1.Pause{}).
+		Owns(&rolloutsv1alpha1.AnalysisRun{}).
 		Complete(r)
 }

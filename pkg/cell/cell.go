@@ -15,7 +15,9 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -41,21 +43,16 @@ type SyncInput struct {
 
 	Spec okrav1alpha1.CellSpec
 
+	Scheme *runtime.Scheme
 	Client client.Client
 }
 
 func Sync(config SyncInput) error {
 	ctx := context.TODO()
 
-	managementClient := config.Client
-
-	if managementClient == nil {
-		var err error
-
-		managementClient, err = clclient.New()
-		if err != nil {
-			return err
-		}
+	managementClient, scheme, err := clclient.Init(config.Client, config.Scheme)
+	if err != nil {
+		return err
 	}
 
 	albListenerARN := config.Spec.Ingress.AWSApplicationLoadBalancer.ListenerARN
@@ -64,6 +61,12 @@ func Sync(config SyncInput) error {
 
 	var albConfig okrav1alpha1.AWSApplicationLoadBalancerConfig
 	var albConfigExists bool
+
+	var cell okrav1alpha1.Cell
+
+	if err := managementClient.Get(ctx, types.NamespacedName{Namespace: config.NS, Name: config.Name}, &cell); err != nil {
+		return err
+	}
 
 	if err := managementClient.Get(ctx, types.NamespacedName{Namespace: config.NS, Name: config.Name}, &albConfig); err != nil {
 		log.Printf("%v\n", err)
@@ -74,6 +77,7 @@ func Sync(config SyncInput) error {
 		albConfig.Namespace = config.NS
 		albConfig.Name = config.Name
 		albConfig.Spec.ListenerARN = albListenerARN
+		ctrl.SetControllerReference(&cell, &albConfig, scheme)
 	} else {
 		albConfigExists = true
 	}
@@ -349,6 +353,7 @@ func Sync(config SyncInput) error {
 									Metrics: at.Spec.Metrics,
 								},
 							}
+							ctrl.SetControllerReference(&cell, &ar, scheme)
 
 							if err := managementClient.Create(ctx, &ar); err != nil {
 								return err
@@ -412,6 +417,7 @@ func Sync(config SyncInput) error {
 									ExpireTime: t,
 								},
 							}
+							ctrl.SetControllerReference(&cell, &pause, scheme)
 
 							if err := managementClient.Create(ctx, &pause); err != nil {
 								return err
