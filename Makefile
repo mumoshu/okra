@@ -56,6 +56,13 @@ vet:
 build: generate
 	$(GO) build .
 
+.PHONY: smoke
+smoke:
+	kind create cluster --name okra || true
+	kind load docker-image --name okra "${NAME}:${VERSION}"
+	helm upgrade --install okra charts/okra -f values.yaml
+	kubectl logs deploy/okra -c manager
+
 docker-buildx: buildx
 	export DOCKER_CLI_EXPERIMENTAL=enabled
 	@if ! docker buildx ls | grep -q container-builder; then\
