@@ -1,0 +1,7 @@
+Makefile
+charts
+config
+hack
+.*
+*.md
+*.yaml

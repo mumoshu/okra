@@ -62,8 +62,6 @@ docker-buildx: buildx
 		docker buildx create --platform ${PLATFORMS} --name container-builder --use;\
 	fi
 	docker buildx build --platform ${PLATFORMS} \
-		--build-arg RUNNER_VERSION=${RUNNER_VERSION} \
-		--build-arg DOCKER_VERSION=${DOCKER_VERSION} \
 		-t "${NAME}:${VERSION}" \
 		-f Dockerfile \
 		. ${PUSH_ARG}
@@ -93,18 +91,20 @@ endif
 
 OS_NAME := $(shell uname -s | tr A-Z a-z)
 
+BUILDX_VERSION ?= 0.7.0
+
 # find or download controller-gen
 # download controller-gen if necessary
 buildx:
-ifeq (, $(shell [ -e ~/.docker/cli-plugins/docker-buildx ]))
+ifeq (, $(shell [ -e ~/.docker/cli-plugins/docker-buildx ] && echo exists))
 	@{ \
 	set -e ;\
 	BUILDX_TMP_DIR=$$(mktemp -d) ;\
 	cd $$BUILDX_TMP_DIR ;\
-	wget https://github.com/docker/buildx/releases/download/v0.4.2/buildx-v0.4.2.$(OS_NAME)-amd64 ;\
-	chmod a+x buildx-v0.4.2.$(OS_NAME)-amd64 ;\
+	wget https://github.com/docker/buildx/releases/download/v$(BUILDX_VERSION)/buildx-v$(BUILDX_VERSION).$(OS_NAME)-amd64 ;\
+	chmod a+x buildx-v$(BUILDX_VERSION).$(OS_NAME)-amd64 ;\
 	mkdir -p ~/.docker/cli-plugins ;\
-	mv buildx-v0.4.2.$(OS_NAME)-amd64 ~/.docker/cli-plugins/docker-buildx ;\
+	mv buildx-v$(BUILDX_VERSION).$(OS_NAME)-amd64 ~/.docker/cli-plugins/docker-buildx ;\
 	rm -rf $$BUILDX_TMP_DIR ;\
 	}
 BUILDX_BIN=~/.docker/cli-plugins/docker-buildx
