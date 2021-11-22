@@ -1,0 +1,36 @@
+# permissions to do edit clustersets.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "okra.editorRoleName" . }}
+rules:
+- apiGroups:
+  - okra.mumo.co
+  resources:
+  - awsapplicationloadbalancerconfigs
+  - awstargetgroups
+  - awstargetgroupsets
+  - cells
+  - clustersets
+  - pauses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - okra.mumo.co
+  resources:
+  - awsapplicationloadbalancerconfigs/status
+  - awstargetgroups/status
+  - awstargetgroupsets/status
+  - cells/status
+  - clustersets/status
+  - pauses/status
+  verbs:
+  - get
+  - patch
+  - update
