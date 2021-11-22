@@ -7,7 +7,12 @@ rules:
 - apiGroups:
   - okra.mumo.co
   resources:
+  - awsapplicationloadbalancerconfigs
+  - awstargetgroups
+  - awstargetgroupsets
+  - cells
   - clustersets
+  - pauses
   verbs:
   - create
   - delete
@@ -19,7 +24,12 @@ rules:
 - apiGroups:
   - okra.mumo.co
   resources:
+  - awsapplicationloadbalancerconfigs/finalizers
+  - awstargetgroups/finalizers
+  - awstargetgroupsets/finalizers
+  - cells/finalizers
   - clustersets/finalizers
+  - pauses/finalizers
   verbs:
   - create
   - delete
@@ -31,7 +41,12 @@ rules:
 - apiGroups:
   - okra.mumo.co
   resources:
+  - awsapplicationloadbalancerconfigs/status
+  - awstargetgroups/status
+  - awstargetgroupsets/status
+  - cells/status
   - clustersets/status
+  - pauses/status
   verbs:
   - get
   - patch
