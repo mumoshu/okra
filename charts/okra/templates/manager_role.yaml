@@ -90,3 +90,15 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - okra.mumo.co
+  resources:
+  - pauses
+  verbs:
+  - deletecollection
+- apiGroups:
+  - argoproj.io
+  resources:
+  - analysisruns
+  verbs:
+  - deletecollection
