@@ -36,6 +36,7 @@ spec:
         env:
         - name: AWS_DEFAULT_REGION
           value: {{ .Values.region }}
+        {{- toYAML .Values.additionalEnv | nindent 8 }}
         image: {{ .Values.image.repository }}:{{ .Values.image.tag | default (cat "v" .Chart.AppVersion | replace " " "") }}
         name: manager
         imagePullPolicy: {{ .Values.image.pullPolicy }}
