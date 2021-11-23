@@ -70,7 +70,19 @@ An `application` is deployed onto `clusters` by `ArgoCD`. The traffic to the `ap
 
 It detects new `target groups`, and live migrate traffic by hot-swaping old target groups serving the affected `applications` with the new target groups, while keepining the `applications` up and running.
 
-## Getting started
+## Getting Started
+
+- [Install Okra](#install-okra)
+- [Create Load Balancer](#create-load-balancer)
+- [Provision Kubernetes Clusters](#provision-kubernetes-clusters)
+- [Deploy Applications onto Clusters](#deploy-applications-onto-clusters)
+  - [Auto-Deploy with ApplicationSet and ClusterSet](#auto-deploy-with-applicationset-and-clusterset)
+- [Register Target Groups][#register-target-groups]
+  - [Auto-Register Target Groups with AWSTargetGroupSet](#auto-register-target-groups-with-awstargetgroupset)
+- [Create Cell](#create-cell)
+- [Create and Rollout New Clusters](#create-and-rollout-new-clusters)
+
+### Install Okra
 
 First, you need to provision a Kubernetes cluster that is running ArgoCD and ArgoCD ApplicationSet controller.
 We call it `management cluster` in the following guide.
@@ -104,14 +116,38 @@ it calls various AWS API to list and describe EKS clusters, generate Kubernetes 
 >
 > For production environments, you'd better use [IAM roles for service accounts](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html) for security reason.
 
+### Create Load Balancer
+
+Create a loadbalancer in front of all the clusters you're going to manage with Okra.
+
+Currently, only AWS Application LoadBalancer is supported.
+
+You can use Terraform, AWS CDK, Pulumi, AWS Console, AWS CLI, or whatever tool to create the loadbalancer.
+
+The only requirement to use that with Okra is to take note of "ALB Listener ARN", which is used to tell Okra 
+which loadbalancer to use for traffic management.
+
+### Provision Kubernetes Clusters
+
 Once `okra` is ready and you see no error, add one or more EKS clusters on your AWS account.
-Don't forget to tag your EKS clusters with `Service=demo`, as we use it to let `okra` auto-import those as ArgoCD cluster secrets.
 
-Finally, create 3 custom resources to get started:
+- Tag your EKS clusters with `Service=demo`, as we use it to let `okra` auto-import those as ArgoCD cluster secrets.
+- Create one or more target groups per EKS cluster and take note of target group ARNS
 
-- ClusterSet
-- AWSTargetGroupSet
-- Cell
+### Deploy Applications onto Clusters
+
+Do either of the below to register clusters to ArgoCD and Okra
+
+- Run `argocd cluster add` on the new cluster and either (1) create a new ArgoCD `Application` custom resource per cluster or (2) let ArgoCD `ApplicationSet` custom resource to auto-deploy onto the clusters
+- Use Okra's `ClusterSet` to auto-import EKS clusters to ArgoCD and use `ApplicationSet` to auto-deploy
+
+#### Auto-Deploy with ApplicationSet and ClusterSet
+
+Assuming your Okra instance has access to AWS EKS and STS APIs, you can use Okra's `ClusterSet` custom resources to
+auto-discover EKS clusters and create corresponding ArgoCD cluster secrets.
+
+This, in combination with ArgoCD `ApplicationSet`, enables you to auto-deploy your applications onto any newly created
+EKS clusters, without ever touching ArgoCD or Okra at all.
 
 The following `ClusterSet` auto-discovers AWS EKS clusters tagged with `Service=demo` and creates
 corresponding ArgoCD cluster secrets.
@@ -136,6 +172,32 @@ spec:
 Note that cluster secrets get `metadata.labels` of `service: demo`, so that `AWSTargetGroupSet` can
 discover those clusters by labels.
 
+### Register Target Groups
+
+Okra works by gradually updating target groups weights behind a loadbalancer. In order to do so,
+you firstly need to tell which target groups to manage, by creating `AWSTargetGroup` custom resource
+on your management cluster per target group.
+
+An `AWSTargetGroup` custom resource is basically a target group ARN with a version number and labels.
+
+```yaml
+apiVersion: okra.mumo.co/v1alpha1
+  kind: AWSTargetGroup
+  metadata:
+    name: default-web1
+    labels:
+      role: web
+      okra.mumo.co/version: 1.0.0
+  spec:
+    # Replace REGION, ACCOUNT, NAME, and ID with the actual values
+    arn: arn:aws:elasticloadbalancing:REGION:ACCOUNT:targetgroup/NAME/ID
+```
+
+#### Auto-Register Target Groups with AWSTargetGroupSet
+
+Assuming you've already created ArgoCD cluster secret for clusters, Okra's `AWSTargetGroupSet` can be used to auto-discover
+target groups associated to the cluster and register those as `AWSTargetGroup` resources.
+
 The following `AWSTargetGroupSet` auto-discovers `TargetGroupBinding` resources labeled with `role=web` from clusters
 labeled with `service=demo`, to create corresponding `AWSTargetGroup` resources in the management cluster.
 
@@ -157,6 +219,12 @@ spec:
   template:
     metadata: {}
 ```
+
+### Create Cell
+
+Finally, create 3 custom resources to get started:
+
+- Cell
 
 Finally, create a `Cell` resource. It specifies how it utilizes an existing AWS ALB in `Spec.Ingress.AWSApplicationLoadBalancer`.
 
@@ -199,6 +267,18 @@ spec:
       - setWeight: 40
     type: Canary
 ```
+
+### Create and Rollout New Clusters
+
+Now you're all set!
+
+Every time you provision new clusters with greater version number, `Cell` automatically discovers new target groups associated to the new clusters, gradually update loadbalancer target groups weights while running various analysis.
+
+Need a Kubernetes version upgrade? Create new Kubernetes clusters with the new Kubernetes version and watch `Cell` automatically and safely rolls out the clusters.
+
+Need a host OS upgrade? Create new clusters with nodes with the new version of the host OS and watch `Cell` rolls out the new clusters.
+
+And you can do the same on every kind of cluster-wide change! Enjoy running your ephemeral Kubernetes clusters.
 
 ## Notes
 
