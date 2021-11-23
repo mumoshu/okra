@@ -309,7 +309,7 @@ The following situations are handled by Okra:
 
 `Okra` provides several Kuberntetes CustomResourceDefinitions(CRD) to achieve its goal.
 
-See [crd.md](crd.md) for more documentation and details of each CRD.
+See [crd.md](/docs/crd.md) for more documentation and details of each CRD.
 
 ## CLI
 
@@ -317,7 +317,7 @@ See [crd.md](crd.md) for more documentation and details of each CRD.
 
 Every single `okra` controller's functionality is exposed via respective `okra` CLI commands. It may be even possible to build your own CI job that replaces `okra` out of those commands!
 
-See [CLI](/cli.md) for more information and its usage.
+See [CLI](/docs/cli.md) for more information and its usage.
 
 ## Related Projects
 
