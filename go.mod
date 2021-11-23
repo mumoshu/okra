@@ -3,7 +3,7 @@ module github.com/mumoshu/okra
 go 1.17
 
 require (
-	github.com/aws/aws-sdk-go v1.35.29
+	github.com/aws/aws-sdk-go v1.37.1
 	github.com/blang/semver v3.5.0+incompatible
 	github.com/go-logr/logr v0.2.1
 	github.com/google/go-cmp v0.5.5
@@ -32,6 +32,7 @@ require (
 	github.com/evanphx/json-patch v4.9.0+incompatible // indirect
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/go-logr/zapr v0.1.0 // indirect
+	github.com/gofrs/flock v0.7.0 // indirect
 	github.com/gogo/protobuf v1.3.1 // indirect
 	github.com/golang/groupcache v0.0.0-20191227052852-215e87163ea7 // indirect
 	github.com/golang/protobuf v1.4.3 // indirect
@@ -67,6 +68,7 @@ require (
 	k8s.io/apiextensions-apiserver v0.18.6 // indirect
 	k8s.io/klog/v2 v2.2.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20200805222855-6aeccd4b50c6 // indirect
+	sigs.k8s.io/aws-iam-authenticator v0.5.3 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.0.1 // indirect
 )
 

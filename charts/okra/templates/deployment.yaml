@@ -34,6 +34,8 @@ spec:
         - /okra
         - controller-manager
         env:
+        - name: PATH
+          value: /bin
         - name: AWS_DEFAULT_REGION
           value: {{ .Values.region }}
         {{- toYaml .Values.additionalEnv | nindent 8 }}
