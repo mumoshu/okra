@@ -36,8 +36,13 @@ test: generate fmt vet manifests
 	$(GO) test ./... -coverprofile cover.out
 	kustomize build config/default | kubectl apply -f - --dry-run
 
-manifests: controller-gen chart-crds
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+manifests: controller-gen kustomize-crds test-crds chart-crds
+
+kustomize-crds:
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./api/v1alpha1/..." output:crd:artifacts:config=config/crd/bases
+
+test-crds:
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths={"./api/elbv2/...","./api/rollouts/..."} output:crd:artifacts:config=testdata/crd
 
 chart-crds:
 	cp config/crd/bases/*.yaml charts/$(CHART)/crds/
