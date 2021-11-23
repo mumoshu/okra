@@ -110,6 +110,17 @@ func (m *Manager) Run() error {
 		return err
 	}
 
+	pauseReconciler := &controllers.PauseReconciler{
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName("Pause"),
+		Scheme: mgr.GetScheme(),
+	}
+
+	if err = pauseReconciler.SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Pause")
+		return err
+	}
+
 	// +kubebuilder:scaffold:builder
 
 	setupLog.Info("starting manager")
