@@ -43,9 +43,12 @@ spec:
       targetGroupSelector:
         matchLabels:
           role: web
-  # replicas: N
-  # versionedBy:
-  #   label: okra.mumo.co/version
+  # Okra by default starts a rollout process once it finds one target group with newer `okra.mumo.co/version` label value
+  # Specify 2 or more to delay the rollout until that number of new target groups are available.
+  # replicas: 2
+  #
+  # Specify the exact version number to rollback, or stick with non-latest version
+  # version: 1.2.3
   updateStrategy:
     type: Canary
     # Canary uses the set of target groups whose labels contains
@@ -95,8 +98,7 @@ spec:
       targetGroupSelector:
         matchLabels:
           role: web
-    # versionedBy:
-    #   label: okra.mumo.co/version
+    replicas: 2
   updateStrategy:
     type: BlueGreen
     // Unlike Canary, BlueGreen uses the latest target group that matches the

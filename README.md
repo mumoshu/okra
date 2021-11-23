@@ -66,19 +66,39 @@ Each target group is tied to a `cluster`, where a `cluster` is a Kubernetes clus
 
 An `application` is deployed onto `clusters` by `ArgoCD`. The traffic to the `application` is routed via an [AWS ALB](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/introduction.html) in front of `clusters`.
 
-```
+```yaml
 kind: Cell
+metadata:
+  name: cell1
 spec:
   ingress:
     type: AWSApplicationLoadBalancer
     awsApplicationLoadBalancer:
-      listenerARN: ...
+      listener:
+        rule:
+          forward: {}
+          hosts:
+          - example.com
+          priority: 10
+      listenerARN: arn:aws:elasticloadbalancing:ap-northeast-1:ACCOUNT:listener/app/...
       targetGroupSelector:
         matchLabels:
           role: web
   replicas: 2
-  versionedBy:
-    label: "okra.mumoshu.github.io/version"
+  updateStrategy:
+    canary:
+      steps:
+      - setWeight: 20
+      - analysis:
+          args:
+          - name: service-name
+            value: exampleapp
+          templates:
+          - templateName: success-rate
+      - pause:
+          duration: 5s
+      - setWeight: 40
+    type: Canary
 ```
 
 `okra` acts as an application traffic migrator.
