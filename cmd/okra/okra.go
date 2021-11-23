@@ -231,7 +231,12 @@ func Run() error {
 			}
 
 			for _, c := range clusters {
-				fmt.Fprintf(os.Stdout, "%v\n", c.Name)
+				var kvs []string
+				for k, v := range c.Labels {
+					kvs = append(kvs, k+"="+v)
+				}
+				labels := strings.Join(kvs, ",")
+				fmt.Fprintf(os.Stdout, "%v\t%s\n", c.Name, labels)
 			}
 
 			return nil
