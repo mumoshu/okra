@@ -74,6 +74,7 @@ rules:
   - argoproj.io
   resources:
   - analysisruns
+  - analysistemplates
   verbs:
   - create
   - delete
