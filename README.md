@@ -30,7 +30,7 @@ Here's the list of possible additional loadbalancers:
 - [Istio Ingerss Gateway](https://istio.io/latest/docs/tasks/traffic-management/ingress/ingress-control/)
 - [ingress-nginx](https://kubernetes.github.io/ingress-nginx/)
 
-## How it works
+## Concepts
 
 `Okra` manages **cells** for you. A cell can be compared to a few things.
 
@@ -56,7 +56,7 @@ It assumes there's one or more target groups per cell. `cell` basically does a c
 
 In `Flagger` or `Argo Rollouts`, you need to update its K8s resource to trigger a new rollout. In Okra you don't need to do so. You preconfigure its resource and Okra auto-starts a rollout once it discovers enough number of new target groups.
 
-## Concepts
+## How it works
 
 `okra` updates your [`Cell`](/crd.md#cell).
 
@@ -65,6 +65,70 @@ A okra `Cell` is composed of target groups and an AWS loadbalancer, and a set of
 Each target group is tied to a `cluster`, where a `cluster` is a Kubernetes cluster that runs your container workloads.
 
 An `application` is deployed onto `clusters` by `ArgoCD`. The traffic to the `application` is routed via an [AWS ALB](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/introduction.html) in front of `clusters`.
+
+`okra` acts as an application traffic migrator.
+
+It detects new `target groups`, and live migrate traffic by hot-swaping old target groups serving the affected `applications` with the new target groups, while keepining the `applications` up and running.
+
+## Getting started
+
+You usually create 3 custom resources to get started:
+
+- ClusterSet
+- AWSTargetGroupSet
+- Cell
+
+The following `ClusterSet` auto-discovers AWS EKS clusters tagged with `Service=demo` and creates
+corresponding ArgoCD cluster secrets.
+
+```yaml
+apiVersion: okra.mumo.co/v1alpha1
+kind: ClusterSet
+metadata:
+  name: cell1
+spec:
+  generators:
+  - awseks:
+      selector:
+        matchTags:
+          Service: demo
+  template:
+    metadata:
+      labels:
+        service: demo
+```
+
+Note that cluster secrets get `metadata.labels` of `service: demo`, so that `AWSTargetGroupSet` can
+discover those clusters by labels.
+
+The following `AWSTargetGroupSet` auto-discovers `TargetGroupBinding` resources labeled with `role=web` from clusters
+labeled with `service=demo`, to create corresponding `AWSTargetGroup` resources in the management cluster.
+
+```yaml
+apiVersion: okra.mumo.co/v1alpha1
+kind: AWSTargetGroupSet
+metadata:
+  name: cell1
+  namespace: default
+spec:
+  generators:
+  - awseks:
+      bindingSelector:
+        matchLabels:
+          role: web
+      clusterSelector:
+        matchLabels:
+          service: demo
+  template:
+    metadata: {}
+```
+
+Finally, create a `Cell` resource. It specifies how it utilizes an existing AWS ALB in `Spec.Ingress.AWSApplicationLoadBalancer`.
+
+On each reconcilation loop, Okra looks for `AWSTargetGroup` resources labeled with `role=web`,
+and group those up by the version numbers saved under the `okra.mumo.co/version` labels.
+
+As `Spec.Replicas` being set to `2`, it waits until 2 latest target groups appear, and starts a canary rollout only after that.
 
 ```yaml
 kind: Cell
@@ -101,11 +165,7 @@ spec:
     type: Canary
 ```
 
-`okra` acts as an application traffic migrator.
-
-It detects new `target groups`, and live migrate traffic by hot-swaping old target groups serving the affected `applications` with the new target groups, while keepining the `applications` up and running.
-
-## Usage
+## Notes
 
 It is inteded to be deployed onto a "control-plane" cluster to where you usually deploy applications like ArgoCD.
 
