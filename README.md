@@ -72,7 +72,42 @@ It detects new `target groups`, and live migrate traffic by hot-swaping old targ
 
 ## Getting started
 
-You usually create 3 custom resources to get started:
+First, you need to provision a Kubernetes cluster that is running ArgoCD and ArgoCD ApplicationSet controller.
+We call it `management cluster` in the following guide.
+
+Once your management cluster is up and running, install `okra` on it using Helm or Kustomize.
+
+```
+$ helm upgrade --install charts/okra -f values.yaml
+```
+
+```
+$ kustomize build config/manager | kubectl apply -f
+```
+
+> Note that you need to provide AWS credentials to `okra` as
+it calls various AWS API to list and describe EKS clusters, generate Kubernetes API tokens, and interacting with loadbalancers.
+>
+> For Helm, the simplest (but not recommended in production) way would be to provide `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`:
+>
+> `values.yaml`:
+> ```yaml
+> region: ap-northeast-1
+> image:
+>   tag: "canary"
+> additionalEnv:
+> - name: AWS_ACCESS_KEY_ID
+>   value: "..."
+> - name: AWS_SECRET_ACCESS_KEY
+>   value: "..."
+> ```
+>
+> For production environments, you'd better use [IAM roles for service accounts](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html) for security reason.
+
+Once `okra` is ready and you see no error, add one or more EKS clusters on your AWS account.
+Don't forget to tag your EKS clusters with `Service=demo`, as we use it to let `okra` auto-import those as ArgoCD cluster secrets.
+
+Finally, create 3 custom resources to get started:
 
 - ClusterSet
 - AWSTargetGroupSet
