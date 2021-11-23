@@ -416,6 +416,7 @@ func Run() error {
 	listLatestTargetGroupsInput = InitListLatestAWSTargetGroupsFlags(listLatestTargetGroups.Flags(), &awstargetgroupset.ListLatestAWSTargetGroupsInput{})
 	cmd.AddCommand(listLatestTargetGroups)
 
+	cmd.AddCommand(createOrUpdateAWSTargetGroupCommand())
 	cmd.AddCommand(syncAWSApplicationLoadBalancerConfigCommand())
 	cmd.AddCommand(syncCellCommand())
 	cmd.AddCommand(syncPauseCommand())
