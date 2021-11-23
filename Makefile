@@ -68,6 +68,10 @@ smoke:
 	helm upgrade --install okra charts/okra -f values.yaml
 	kubectl logs deploy/okra -c manager
 
+.PHONY: smoke/clean
+smoke/clean:
+	helm delete okra
+
 docker-buildx: buildx
 	export DOCKER_CLI_EXPERIMENTAL=enabled
 	@if ! docker buildx ls | grep -q container-builder; then\
