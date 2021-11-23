@@ -95,7 +95,7 @@ func Sync(config SyncInput) error {
 
 	desiredVer, latestTGs, err := awstargetgroupset.ListLatestAWSTargetGroups(awstargetgroupset.ListLatestAWSTargetGroupsInput{
 		ListAWSTargetGroupsInput: awstargetgroupset.ListAWSTargetGroupsInput{
-			NS:       config.NS,
+			NS:       cell.Namespace,
 			Selector: tgSelector.String(),
 		},
 		SemverLabelKeys: labelKeys,
@@ -117,7 +117,7 @@ func Sync(config SyncInput) error {
 	}
 
 	currentTGs, err := awstargetgroupset.ListAWSTargetGroups(awstargetgroupset.ListAWSTargetGroupsInput{
-		NS:       config.NS,
+		NS:       cell.Namespace,
 		Selector: tgSelector.String(),
 	})
 	if err != nil {
@@ -348,7 +348,9 @@ func Sync(config SyncInput) error {
 							argsMap := make(map[string]rolloutsv1alpha1.Argument)
 
 							var at rolloutsv1alpha1.AnalysisTemplate
-							if err := runtimeClient.Get(ctx, types.NamespacedName{Namespace: config.NS, Name: tmpl.TemplateName}, &at); err != nil {
+							nsName := types.NamespacedName{Namespace: cell.Namespace, Name: tmpl.TemplateName}
+							if err := runtimeClient.Get(ctx, nsName, &at); err != nil {
+								log.Printf("Failed getting analysistemplate %s: %v", nsName, err)
 								return err
 							}
 
@@ -382,11 +384,11 @@ func Sync(config SyncInput) error {
 
 							ar := rolloutsv1alpha1.AnalysisRun{
 								ObjectMeta: metav1.ObjectMeta{
-									Namespace: config.NS,
-									Name:      fmt.Sprintf("%s-%s-%d", config.Name, tmpl.TemplateName, stepIndex),
+									Namespace: cell.Namespace,
+									Name:      fmt.Sprintf("%s-%d-%s", cell.Name, stepIndex, tmpl.TemplateName),
 									Labels: map[string]string{
 										LabelKeyStepIndex: stepIndexStr,
-										LabelKeyCell:      config.Name,
+										LabelKeyCell:      cell.Name,
 									},
 								},
 								Spec: rolloutsv1alpha1.AnalysisRunSpec{
@@ -394,7 +396,9 @@ func Sync(config SyncInput) error {
 									Metrics: at.Spec.Metrics,
 								},
 							}
-							ctrl.SetControllerReference(&cell, &ar, scheme)
+							if err := ctrl.SetControllerReference(&cell, &ar, scheme); err != nil {
+								log.Printf("Failed setting cnotroller reference on %s/%s: %v", ar.Namespace, ar.Name, err)
+							}
 
 							if err := runtimeClient.Create(ctx, &ar); err != nil {
 								return err
@@ -431,11 +435,11 @@ func Sync(config SyncInput) error {
 						// TODO List Pause resource and break if it isn't expired yet
 						var pauseList okrav1alpha1.PauseList
 
-						ns := config.NS
+						ns := cell.Namespace
 
 						labels := map[string]string{
 							LabelKeyStepIndex: stepIndexStr,
-							LabelKeyCell:      config.Name,
+							LabelKeyCell:      cell.Name,
 						}
 
 						if err := runtimeClient.List(ctx, &pauseList, client.InNamespace(ns), client.MatchingLabels(labels)); err != nil {
@@ -451,7 +455,7 @@ func Sync(config SyncInput) error {
 							pause := okrav1alpha1.Pause{
 								ObjectMeta: metav1.ObjectMeta{
 									Namespace: ns,
-									Name:      fmt.Sprintf("%s-%d-%s", config.Name, stepIndex, "pause"),
+									Name:      fmt.Sprintf("%s-%d-%s", cell.Name, stepIndex, "pause"),
 									Labels:    labels,
 								},
 								Spec: okrav1alpha1.PauseSpec{
