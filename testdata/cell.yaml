@@ -1,0 +1,39 @@
+apiVersion: okra.mumo.co/v1alpha1
+kind: Cell
+metadata:
+  name: web
+spec:
+  ingress:
+    type: AWSApplicationLoadBalancer
+    awsApplicationLoadBalancer:
+      listenerARN: ...
+      targetGroupSelector:
+        matchLabels:
+          role: web
+        versionLabels:
+        - okra.mumo.co/version
+  # replicas: N
+  updateStrategy:
+    type: Canary
+    # Canary uses the set of target groups whose labels contains
+    # `selector.MatchLabels` and the size of the set is equal or greater than N.
+    # When there are two or more such sets exist, the one that has the largest version is used.
+    canary:
+      # See https://argoproj.github.io/argo-rollouts/features/analysis/#background-analysis
+      analysis:
+        templates:
+        - templateName: success-rate
+        startingStep: 2 # delay starting analysis run until setWeight: 20%
+        args:
+        - name: service-name
+          value: guestbook-svc.default.svc.cluster.local
+      steps:
+      - stepWeight: 10
+      - pause: {duration: 10m}
+      - stepWeight: 20
+      - analysis:
+          templates:
+          - templateName: success-rate
+          args:
+          - name: service-name
+            value: guestbook-svc.default.svc.cluster.local

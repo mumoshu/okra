@@ -1,0 +1,31 @@
+apiVersion: okra.mumo.co/v1alpha1
+kind: AWSTargetGroupSet
+metadata:
+  name: tgset1
+spec:
+  generators:
+  - awseks:
+      clusterSelector:
+        matchLabels:
+          role: "web"
+      bindingSelector:
+        matchLabels:
+          role: "web"
+  # template is a template for dynamically generated AWSTargetGroup resources
+  template:
+    metadata:
+      labels:
+        role: "{{.tags.role}}"
+  # bindingTemplate is optional, and used only when you want to dynamically generate AWSTargetGroupBinding
+  bindingTemplate:
+    metadata:
+      name: "web-{{.clustername}}"
+      labels:
+        role: "{{.awseks.cluster.tags.role}}"
+    spec:
+        targets:
+        - name: specificnodeincluster
+          clusterName: "{{.awseks.cluster.name}}"
+          nodeSelector:
+            type: node
+          port: 8080
