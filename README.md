@@ -4,6 +4,8 @@
 >
 > But I'd still appreciate it if you could help me by testing it and submitting pull requests,
 > so that you can get the first release earlier!
+>
+> We already have a throughout getting-started guide, a working Helm chart, and a container image published at `mumoshu/okra:canary`. So it shouldn't be that hard to give it a shot.
 
 `Okra` is a [Kubernetes controller](https://kubernetes.io/docs/concepts/architecture/controller/) and a set of [CRDs](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/) which provide advanced multi-cluster appilcation rollout capabilities, such as canary deployment of clusters.
 
