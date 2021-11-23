@@ -353,7 +353,7 @@ Okra is able to find the cluster thanks to `clusterSelector.matchLabels.service=
 The outcome is that Okra creates the below `AWSTargetGroup` in the management cluster. Note that `metadata.name` of it is
 derived from the original `TargetGroupBinding`'s `metadata.namespace` and `metadata.name`, concatenated with `-` in between.
 
-```yaml:
+```yaml
 # In the management cluster
 apiVersion: okra.mumo.co/v1alpha1
   kind: AWSTargetGroup
