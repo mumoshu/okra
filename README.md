@@ -332,6 +332,43 @@ spec:
     metadata: {}
 ```
 
+Let's say you had the below `TargetGroupBinding` custom resource labled with `role: web` in the new cluster labeled with `serivce: demo`:
+
+```yaml
+# In the new cluster
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: TargetGroupBinding
+metadata:
+  name: web1
+  namespace: default
+  labels:
+    role: web
+    okra.mumo.co/version: 1.0.0
+spec:
+  arn: arn:aws:elasticloadbalancing:REGION:ACCOUNT:targetgroup/NAME/ID
+```
+
+Okra is able to find the cluster thanks to `clusterSelector.matchLabels.service=demo` and also able find this target group binding thanks to `bindingSelector.matchLabels.role=web`.
+
+The outcome is that Okra creates the below `AWSTargetGroup` in the management cluster. Note that `metadata.name` of it is
+derived from the original `TargetGroupBinding`'s `metadata.namespace` and `metadata.name`, concatenated with `-` in between.
+
+```yaml:
+# In the management cluster
+apiVersion: okra.mumo.co/v1alpha1
+  kind: AWSTargetGroup
+  metadata:
+    name: default-web1
+    labels:
+      role: web
+      okra.mumo.co/version: 1.0.0
+  spec:
+    # Replace REGION, ACCOUNT, NAME, and ID with the actual values
+    arn: arn:aws:elasticloadbalancing:REGION:ACCOUNT:targetgroup/NAME/ID
+```
+
+The label `role: web` is later used by `Cell` to detect it as a candidate for a canary target group, and the `okra.mumo.co/version: 1.0.0` label is used to group and sort all the detected target groups to finally see which set of target groups are considered as a part of the next canary.
+
 ### Create Cell
 
 Finally, create a `Cell` resource.
@@ -382,6 +419,8 @@ spec:
     type: Canary
 ```
 
+#### Configuring ALB listener rule for the Cell
+
 The listener rule part is required in order to configure your ALB.
 
 ```yaml
@@ -393,9 +432,7 @@ listener:
     priority: 10
 ```
 
-#### Configuring ALB listener rule for the Cell
-
-This directly corresponds to the configuration of an [ALB Listener Rule](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/listener-update-rules.html).
+And this directly corresponds to the configuration of an [ALB Listener Rule](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/listener-update-rules.html).
 
 `priority: 10` is the priority of the listener rule to be added to your ALB listener and `hosts: [example.com]` is the conditions associated to the rule.
 
