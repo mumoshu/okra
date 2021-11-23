@@ -104,6 +104,18 @@ func Sync(config SyncInput) error {
 		return err
 	}
 
+	if cell.Spec.Version != "" {
+		ver, err := semver.Parse(cell.Spec.Version)
+		if err != nil {
+			log.Printf("Failed to parse cell.Spec.Version(%s): %v", cell.Spec.Version, err)
+			return err
+		}
+
+		log.Printf("Detected a manual rollback request from %s to %s", desiredVer, ver)
+
+		desiredVer = &ver
+	}
+
 	currentTGs, err := awstargetgroupset.ListAWSTargetGroups(awstargetgroupset.ListAWSTargetGroupsInput{
 		NS:       config.NS,
 		Selector: tgSelector.String(),

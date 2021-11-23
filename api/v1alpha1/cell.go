@@ -28,8 +28,12 @@ import (
 
 // CellSpec defines the desired state of ClusterSet
 type CellSpec struct {
-	Ingress        CellIngress        `json:"ingress,omitempty"`
-	Replicas       *int32             `json:"replicas,omitempty"`
+	Ingress  CellIngress `json:"ingress,omitempty"`
+	Replicas *int32      `json:"replicas,omitempty"`
+	// Version is the desired version number of target groups to be rolled out.
+	// If the desired version is less than the current version, okra tries to swap the target groups registered in the loadbalancer
+	// ASAP, so that a manual rollback can be done immediately.
+	Version        string             `json:"version,omitempty"`
 	UpdateStrategy CellUpdateStrategy `json:"updateStrategy,omitempty"`
 }
 
