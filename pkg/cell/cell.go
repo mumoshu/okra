@@ -213,7 +213,6 @@ func Sync(config SyncInput) error {
 			}
 		}
 
-		// TODO check desired TGs version and canary TGs version and do immediate update only when the version matches?
 		if desiredAndCanaryAreSameVersion && len(desiredTGs) != len(canaryTGs) {
 			// Do update immediately without analysis or step update when
 			// it seems to have been triggered by an additional cluster that might have been
