@@ -77,7 +77,7 @@ It detects new `target groups`, and live migrate traffic by hot-swaping old targ
 - [Provision Kubernetes Clusters](#provision-kubernetes-clusters)
 - [Deploy Applications onto Clusters](#deploy-applications-onto-clusters)
   - [Auto-Deploy with ApplicationSet and ClusterSet](#auto-deploy-with-applicationset-and-clusterset)
-- [Register Target Groups][#register-target-groups]
+- [Register Target Groups](#register-target-groups)
   - [Auto-Register Target Groups with AWSTargetGroupSet](#auto-register-target-groups-with-awstargetgroupset)
 - [Create Cell](#create-cell)
 - [Create and Rollout New Clusters](#create-and-rollout-new-clusters)
