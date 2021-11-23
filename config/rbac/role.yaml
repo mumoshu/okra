@@ -1,0 +1,223 @@
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - awstargetgroup
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - awstargetgroup/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - okra.mumo.co
+  resources:
+  - awsapplicationloadbalancereconfigs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - okra.mumo.co
+  resources:
+  - awsapplicationloadbalancereconfigs/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - okra.mumo.co
+  resources:
+  - awsapplicationloadbalancereconfigs/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - okra.mumo.co
+  resources:
+  - awstargetgroupsets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - okra.mumo.co
+  resources:
+  - awstargetgroupsets/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - okra.mumo.co
+  resources:
+  - awstargetgroupsets/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - okra.mumo.co
+  resources:
+  - cells
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - okra.mumo.co
+  resources:
+  - cells/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - okra.mumo.co
+  resources:
+  - cells/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - okra.mumo.co
+  resources:
+  - clustersets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - okra.mumo.co
+  resources:
+  - clustersets/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - okra.mumo.co
+  resources:
+  - clustersets/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - okra.mumo.co
+  resources:
+  - pauses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - okra.mumo.co
+  resources:
+  - pauses/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - okra.mumo.co
+  resources:
+  - pauses/status
+  verbs:
+  - get
+  - patch
+  - update
