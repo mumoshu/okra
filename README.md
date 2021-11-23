@@ -382,6 +382,39 @@ spec:
     type: Canary
 ```
 
+The listener rule part is required in order to configure your ALB.
+
+```
+listener:
+  rule:
+    forward: {}
+    hosts:
+    - example.com
+    priority: 10
+```
+
+#### Configuring ALB listener rule for the Cell
+
+This directly corresponds to the configuration of an [ALB Listener Rule](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/listener-update-rules.html).
+
+`priority: 10` is the priority of the listener rule to be added to your ALB listener and `hosts: [example.com]` is the conditions associated to the rule.
+
+ALB supports both default and non-default listener rules. Every non-default listener rule requires a priority and non-empty rule conditions.
+
+Okra is designed to not modify the default rule as it can be disruptive sometimes. That's why it requires `priority` and a rule condition.
+
+Other rule conditions like `headers`, `methods`, `pathPatterns`, and so on are also supported. See the output of `kubectl explain awsapplicationloadbalancerconfig.spec.listener --recursive` for all the available conditions.
+
+#### Configuring Canary Rollout Steps for the Cell
+
+`spec.updateStategy.canary.steps` contains a definition of canary rollout steps.
+
+Each step can be any of the belows:
+
+- `setWeight`: updates the canary target groups total weight to the given value. For example, when there's only one canary target group to be rolled out and it's `setWeight: 20`, the canary target group gets weight of `20`. If there were two canary target groups, each gets weight of `10`
+- `analysis`: runs ArgoCD `AnalysisRun` with given arguments. See [ArgoCD's documentation on Analysis](https://argoproj.github.io/argo-rollouts/features/analysis/#background-analysis) for more information on `AnalysisRun` and its template `AnalysisTemplate`.
+- `pause`: pauses the rollout for the duration.
+
 ### Create and Rollout New Clusters
 
 Now you're all set!
