@@ -97,6 +97,10 @@ $ helm upgrade --install charts/okra -f values.yaml
 $ kustomize build config/manager | kubectl apply -f
 ```
 
+> You can specify okra's container image tag to anything that is available on https://hub.docker.com/r/mumoshu/okra/tags.
+>
+> For Helm, you do it like `helm upgrade --install charts/okra --set image.tag=$TAG`.
+
 > Note that you need to provide AWS credentials to `okra` as
 it calls various AWS API to list and describe EKS clusters, generate Kubernetes API tokens, and interacting with loadbalancers.
 >
