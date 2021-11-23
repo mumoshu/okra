@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/blang/semver"
 	rolloutsv1alpha1 "github.com/mumoshu/okra/api/rollouts/v1alpha1"
 	okrav1alpha1 "github.com/mumoshu/okra/api/v1alpha1"
 	"github.com/mumoshu/okra/pkg/awstargetgroupset"
@@ -201,7 +202,10 @@ func Sync(config SyncInput) error {
 			currentStableTGsWeight += tg.Weight
 		}
 
-		var desiredAndCanaryAreSameVersion bool
+		var (
+			desiredAndCanaryAreSameVersion bool
+			rollbackRequested              bool
+		)
 
 		if len(canaryTGs) > 0 {
 			for _, tg := range canaryTGs {
@@ -210,13 +214,28 @@ func Sync(config SyncInput) error {
 					desiredAndCanaryAreSameVersion = true
 					break
 				}
+
+				currentVer, err := semver.Parse(ver)
+				if err != nil {
+					log.Printf("Skipped incorrect label value %s: %v", ver, err)
+					continue
+				}
+
+				if desiredVer.LT(currentVer) {
+					rollbackRequested = true
+				}
 			}
 		}
 
-		if desiredAndCanaryAreSameVersion && len(desiredTGs) != len(canaryTGs) {
-			// Do update immediately without analysis or step update when
-			// it seems to have been triggered by an additional cluster that might have been
-			// added to deal with more load.
+		// Do update immediately without analysis or step update when
+		// it seems to have been triggered by an additional cluster that might have been
+		// added to deal with more load.
+		scaleRequested := desiredAndCanaryAreSameVersion && len(desiredTGs) != len(canaryTGs)
+
+		if rollbackRequested || scaleRequested {
+			// Immediately update LB config as quickly as possible when
+			// either a rollback or a scale in/out is requested.
+
 			albConfig.Spec.Listener.Rule.Forward.TargetGroups = nil
 			for _, tg := range desiredTGs {
 				albConfig.Spec.Listener.Rule.Forward.TargetGroups = append(albConfig.Spec.Listener.Rule.Forward.TargetGroups, tg)
@@ -232,6 +251,12 @@ func Sync(config SyncInput) error {
 			}
 
 			log.Printf("Updated target groups and weights to: %v", updated)
+
+			if rollbackRequested {
+				log.Printf("Finished rollback")
+			} else if scaleRequested {
+				log.Printf("Finished scaling")
+			}
 
 			return nil
 		}

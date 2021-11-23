@@ -103,6 +103,11 @@ It supports complex configurations like below:
 
 - One or more clusters per cell, or an ALB listener rule. Imagine a case that you need a pair of clusters to serve your service. `okra` is able to canary-deploy the pair of clusters, by periodically updating two target group weights as a whole.
 
+The following situations are handled by Okra:
+
+- When there are enough number of "new" target groups, Okra gradually updates target group weights for a rollout
+- Okra automatically falls back to a "old" target groups when there are only old target groups in the AWS account while ALB points to "new" target groups that disappeared
+
 ## CRDs
 
 `Okra` provides several Kuberntetes CustomResourceDefinitions(CRD) to achieve its goal.
