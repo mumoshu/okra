@@ -384,7 +384,7 @@ spec:
 
 The listener rule part is required in order to configure your ALB.
 
-```
+```yaml
 listener:
   rule:
     forward: {}
