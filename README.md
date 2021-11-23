@@ -222,16 +222,18 @@ spec:
 
 ### Create Cell
 
-Finally, create 3 custom resources to get started:
+Finally, create a `Cell` resource.
 
-- Cell
+It specifies how it utilizes an existing AWS ALB in `Spec.Ingress.AWSApplicationLoadBalancer` and which listener rule to be used for rollout, and the information to detect target groups that serves your application.
 
-Finally, create a `Cell` resource. It specifies how it utilizes an existing AWS ALB in `Spec.Ingress.AWSApplicationLoadBalancer`.
+An example `Cell` custom resource follows.
 
 On each reconcilation loop, Okra looks for `AWSTargetGroup` resources labeled with `role=web`,
 and group those up by the version numbers saved under the `okra.mumo.co/version` labels.
 
 As `Spec.Replicas` being set to `2`, it waits until 2 latest target groups appear, and starts a canary rollout only after that.
+
+If your application is not that big and a single cluster suffices, you can safely set `replicas: 1` or omit `replicas` at all.
 
 ```yaml
 kind: Cell
