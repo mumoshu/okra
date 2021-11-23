@@ -275,7 +275,11 @@ func Sync(config SyncInput) error {
 
 		var updatedTGs []okrav1alpha1.ForwardTargetGroup
 
-		var passedAllCanarySteps bool
+		var (
+			passedAllCanarySteps bool
+			anyAnalysisRunFailed bool
+			desiredVerIsBlocked  bool
+		)
 
 		// TODO Use client.MatchingLabels?
 		ownedByCellLabelSelector, err := labels.Parse(LabelKeyCell + "=" + cell.Name)
@@ -285,7 +289,22 @@ func Sync(config SyncInput) error {
 
 		desiredStableTGsWeight := 100
 
-		{
+		var bl okrav1alpha1.VersionBlocklist
+
+		if err := runtimeClient.Get(ctx, types.NamespacedName{Namespace: cell.Namespace, Name: cell.Name}, &bl); err != nil {
+			if !kerrors.IsNotFound(err) {
+				return err
+			}
+		}
+
+		for _, item := range bl.Spec.Items {
+			if item.Version == desiredVer.String() {
+				desiredVerIsBlocked = true
+				break
+			}
+		}
+
+		if !desiredVerIsBlocked {
 			canarySteps := cell.Spec.UpdateStrategy.Canary.Steps
 
 			passedAllCanarySteps = currentCanaryTGsWeight == 100
@@ -413,6 +432,8 @@ func Sync(config SyncInput) error {
 									if ar.Status.Phase == rolloutsv1alpha1.AnalysisPhaseFailed {
 										// TODO Suspend and mark it as permanent failure when analysis run timed out
 										log.Printf("AnalysisRun %s failed", ar.Name)
+
+										anyAnalysisRunFailed = true
 										break STEPS
 									}
 
@@ -505,6 +526,10 @@ func Sync(config SyncInput) error {
 				desiredStableTGsWeight = 0
 			}
 
+			if anyAnalysisRunFailed {
+				desiredStableTGsWeight = 100
+			}
+
 			if desiredStableTGsWeight < 0 {
 				return fmt.Errorf("stable tgs weight cannot be less than 0: %v", desiredStableTGsWeight)
 			}
@@ -589,7 +614,43 @@ func Sync(config SyncInput) error {
 			return err
 		}
 
-		if desiredStableTGsWeight == 0 && passedAllCanarySteps {
+		if anyAnalysisRunFailed {
+			var bl okrav1alpha1.VersionBlocklist
+
+			item := okrav1alpha1.VersionBlocklistItem{
+				Version: desiredVer.String(),
+				Cause:   "AnalysisRun failed",
+			}
+
+			if err := runtimeClient.Get(ctx, types.NamespacedName{Namespace: cell.Namespace, Name: cell.Name}, &bl); err != nil {
+				if !kerrors.IsNotFound(err) {
+					return err
+				}
+
+				bl = okrav1alpha1.VersionBlocklist{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: cell.Namespace,
+						Name:      cell.Name,
+					},
+					Spec: okrav1alpha1.VersionBlocklistSpec{
+						Items: []okrav1alpha1.VersionBlocklistItem{
+							item,
+						},
+					},
+				}
+				if err := runtimeClient.Create(ctx, &bl); err != nil {
+					return err
+				}
+			} else {
+				bl.Spec.Items = append(bl.Spec.Items, item)
+
+				if err := runtimeClient.Update(ctx, &bl); err != nil {
+					return err
+				}
+			}
+		}
+
+		if desiredStableTGsWeight == 0 && passedAllCanarySteps || anyAnalysisRunFailed || desiredVerIsBlocked {
 			// Seems like we need to explicitly specify the namespace with client.InNamespace.
 			// Otherwise it results in `Error: the server could not find the requested resource (delete analysisruns.argoproj.io)`
 			if err := runtimeClient.DeleteAllOf(ctx, &rolloutsv1alpha1.AnalysisRun{}, client.InNamespace(cell.Namespace), &client.DeleteAllOfOptions{

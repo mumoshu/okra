@@ -48,6 +48,7 @@ type CellReconciler struct {
 // +kubebuilder:rbac:groups=okra.mumo.co,resources=cells,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=okra.mumo.co,resources=cells/finalizers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=okra.mumo.co,resources=cells/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=okra.mumo.co,resources=versionblocklists,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=secrets/finalizers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
