@@ -66,7 +66,12 @@ smoke:
 	kind create cluster --name okra || true
 	kind load docker-image --name okra "${NAME}:${VERSION}"
 	helm upgrade --install okra charts/okra -f values.yaml
+	kubectl wait deploy/okra --for=condition=Available
 	kubectl logs deploy/okra -c manager
+
+.PHONY: smoke/restart
+smoke/restart:
+	kubectl delete po -l app.kubernetes.io/name=okra
 
 .PHONY: smoke/clean
 smoke/clean:
