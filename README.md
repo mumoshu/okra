@@ -188,6 +188,74 @@ spec:
 
 Note that `template.metadat.labels.sevice` instruct cluster secrets to get `metadata.labels` of `service: demo`, so that `AWSTargetGroupSet` can discover those clusters by labels.
 
+Let's say you had an EKS cluster that looks like the below:
+
+```
+$ aws eks describe-cluster --name cdk1
+{
+    "cluster": {
+        "name": "cdk1",
+        "arn": "arn:aws:eks:REGION:ACCOUNT:cluster/cdk1",
+        "createdAt": "2021-09-20T03:21:44.391000+00:00",
+        "version": "1.21",
+        "endpoint": "https://SOME_CLUSTER_ID.SOME_SHARD_ID.REGION.eks.amazonaws.com",
+        "roleArn": "arn:aws:iam::ACCOUNT:role/NAME",
+        "resourcesVpcConfig": {
+            "subnetIds": [
+                "subnet-aaa",
+                "subnet-bbb",
+                "subnet-ccc"
+            ],
+            "securityGroupIds": [
+                "sg-ddd"
+            ],
+            "clusterSecurityGroupId": "sg-eee",
+            "vpcId": "vpc-fff",
+            "endpointPublicAccess": true,
+            "endpointPrivateAccess": true,
+            "publicAccessCidrs": [
+                "0.0.0.0/0"
+            ]
+        },
+        "kubernetesNetworkConfig": {
+            "serviceIpv4Cidr": "172.20.0.0/16"
+        },
+        "logging": {
+            "clusterLogging": [
+                {
+                    "types": [
+                        "api",
+                        "audit",
+                        "authenticator",
+                        "controllerManager",
+                        "scheduler"
+                    ],
+                    "enabled": false
+                }
+            ]
+        },
+        "identity": {
+            "oidc": {
+              ...
+            }
+        },
+        "status": "ACTIVE",
+        "certificateAuthority": {
+          ...
+        },
+        "platformVersion": "eks.2",
+        "tags": {
+            "Service": "demo"
+        }
+    }
+}
+```
+
+Note that this Okra is able to find this EKS cluster because:
+
+- This cluster has `tags` of `"Service": "demo"` while
+- The ClusterSet created above has `generators[].awseks.selector.matchTags` of `Service: demo`
+
 An ArgoCD cluster secret created by the above `ClusterSet` should look the below, which is a regular ArgoCD cluster secret with the specified labels.
 
 ```yaml
@@ -205,6 +273,8 @@ data:
   name: <BASE64 ENCODED CLUSTER NAME>
   server: <BASE64 ENCODED HTTPS URL OF K8S API ENDPOINT>
 ```
+
+Again, note that this clustser secret got `metadata.labels` of `service: demo`, because `ClusterSet` had `template.metadat.labels.sevice`.
 
 ### Register Target Groups
 
