@@ -283,105 +283,121 @@ func DeleteOutdatedAWSTargetGroups(config SyncInput) ([]SyncResult, error) {
 
 	kubeclient := clientset.CoreV1().Secrets(ns)
 
-	secret, err := kubeclient.Get(context.TODO(), config.ClusterName, metav1.GetOptions{})
-	if err != nil {
-		return nil, xerrors.Errorf("listing cluster secrets: %w", err)
-	}
-
 	managementClient, err := clclient.New()
 	if err != nil {
 		return nil, err
 	}
 
-	client, err := clclient.NewFromClusterSecret(*secret)
-	if err != nil {
-		return nil, err
-	}
+	var clusters []corev1.Secret
 
-	var bindings v1beta1.TargetGroupBindingList
-
-	optionalNS := ""
-
-	sel, err := labels.Parse(config.BindingSelector)
-	if err != nil {
-		return nil, xerrors.Errorf("parsing binding selector: %v", err)
-	}
-
-	if err := client.List(context.TODO(), &bindings, &runtimeclient.ListOptions{
-		Namespace:     optionalNS,
-		LabelSelector: sel,
-	}); err != nil {
-		return nil, okraerror.New(fmt.Errorf("list bindings: %w", err))
-	}
-
-	var objects []okrav1alpha1.AWSTargetGroup
-
-	for _, b := range bindings.Items {
-		labels := map[string]string{}
-
-		for k, v := range b.Labels {
-			labels[k] = v
+	if config.ClusterName != "" {
+		secret, err := kubeclient.Get(context.TODO(), config.ClusterName, metav1.GetOptions{})
+		if err != nil {
+			return nil, xerrors.Errorf("getting cluster secret: %w", err)
 		}
 
-		for k, v := range config.Labels {
-			labels[k] = v
+		clusters = append(clusters, *secret)
+	} else if config.ClusterSelector != "" {
+		secretList, err := kubeclient.List(context.TODO(), metav1.ListOptions{LabelSelector: config.ClusterSelector})
+		if err != nil {
+			return nil, xerrors.Errorf("listing cluster secrets: %w", err)
 		}
 
-		objects = append(objects, okrav1alpha1.AWSTargetGroup{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("%s-%s", b.Namespace, b.Name),
-				Namespace: ns,
-				Labels:    labels,
-			},
-			Spec: okrav1alpha1.AWSTargetGroupSpec{
-				ARN: b.Spec.TargetGroupARN,
-			},
-		})
-	}
-
-	desiredTargetGroups := map[string]struct{}{}
-
-	for _, obj := range objects {
-		desiredTargetGroups[obj.Name] = struct{}{}
-	}
-
-	var current okrav1alpha1.AWSTargetGroupList
-
-	if err := managementClient.List(context.TODO(), &current, &runtimeclient.ListOptions{
-		Namespace:     optionalNS,
-		LabelSelector: sel,
-	}); err != nil {
-		return nil, okraerror.New(fmt.Errorf("list awstargetgroups: %w", err))
+		clusters = secretList.Items
 	}
 
 	var deleted []SyncResult
 
-	for _, item := range current.Items {
-		name := item.Name
+	for _, secret := range clusters {
+		client, err := clclient.NewFromClusterSecret(secret)
+		if err != nil {
+			return nil, err
+		}
 
-		if _, desired := desiredTargetGroups[name]; !desired {
-			if dryRun {
-				fmt.Printf("AWSTargetGroup %q deleted successfully (Dry Run)\n", name)
-			} else {
-				// Manage resource
-				var awstg okrav1alpha1.AWSTargetGroup
+		var bindings v1beta1.TargetGroupBindingList
 
-				if err := managementClient.Get(context.TODO(), types.NamespacedName{Namespace: ns, Name: name}, &awstg); err != nil {
-					return nil, fmt.Errorf("getting awstargetgroup: %w", err)
-				}
+		optionalNS := ""
 
-				err := managementClient.Delete(context.TODO(), &awstg)
-				if err != nil {
-					return nil, fmt.Errorf("delete awstargetgroup: %w", err)
-				}
+		sel, err := labels.Parse(config.BindingSelector)
+		if err != nil {
+			return nil, xerrors.Errorf("parsing binding selector: %v", err)
+		}
 
-				fmt.Printf("AWSTargetGroup %q deleted successfully\n", name)
+		if err := client.List(context.TODO(), &bindings, &runtimeclient.ListOptions{
+			Namespace:     optionalNS,
+			LabelSelector: sel,
+		}); err != nil {
+			return nil, okraerror.New(fmt.Errorf("list bindings: %w", err))
+		}
+
+		var objects []okrav1alpha1.AWSTargetGroup
+
+		for _, b := range bindings.Items {
+			labels := map[string]string{}
+
+			for k, v := range b.Labels {
+				labels[k] = v
 			}
 
-			deleted = append(deleted, SyncResult{
-				Name:   name,
-				Action: "Delete",
+			for k, v := range config.Labels {
+				labels[k] = v
+			}
+
+			objects = append(objects, okrav1alpha1.AWSTargetGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fmt.Sprintf("%s-%s", b.Namespace, b.Name),
+					Namespace: ns,
+					Labels:    labels,
+				},
+				Spec: okrav1alpha1.AWSTargetGroupSpec{
+					ARN: b.Spec.TargetGroupARN,
+				},
 			})
+		}
+
+		desiredTargetGroups := map[string]struct{}{}
+
+		for _, obj := range objects {
+			desiredTargetGroups[obj.Name] = struct{}{}
+		}
+
+		var current okrav1alpha1.AWSTargetGroupList
+
+		if err := managementClient.List(context.TODO(), &current, &runtimeclient.ListOptions{
+			Namespace:     optionalNS,
+			LabelSelector: sel,
+		}); err != nil {
+			return nil, okraerror.New(fmt.Errorf("list awstargetgroups: %w", err))
+		}
+
+		for _, item := range current.Items {
+			name := item.Name
+
+			if _, desired := desiredTargetGroups[name]; !desired {
+				if dryRun {
+					fmt.Printf("AWSTargetGroup %q deleted successfully (Dry Run)\n", name)
+				} else {
+					// Manage resource
+					var awstg okrav1alpha1.AWSTargetGroup
+
+					if err := managementClient.Get(context.TODO(), types.NamespacedName{Namespace: ns, Name: name}, &awstg); err != nil {
+						return nil, fmt.Errorf("getting awstargetgroup: %w", err)
+					}
+
+					err := managementClient.Delete(context.TODO(), &awstg)
+					if err != nil {
+						return nil, fmt.Errorf("delete awstargetgroup: %w", err)
+					}
+
+					fmt.Printf("AWSTargetGroup %q deleted successfully\n", name)
+				}
+
+				deleted = append(deleted, SyncResult{
+					Cluster: secret.Namespace + "/" + secret.Name,
+					Name:    name,
+					Action:  "Delete",
+				})
+			}
 		}
 	}
 
@@ -389,8 +405,9 @@ func DeleteOutdatedAWSTargetGroups(config SyncInput) ([]SyncResult, error) {
 }
 
 type SyncResult struct {
-	Name   string
-	Action string
+	Cluster string
+	Name    string
+	Action  string
 }
 
 func Sync(config SyncInput) ([]SyncResult, error) {

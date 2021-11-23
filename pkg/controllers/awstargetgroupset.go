@@ -106,11 +106,15 @@ func (r *AWSTargetGroupSetReconciler) Reconcile(req ctrl.Request) (ctrl.Result, 
 		Labels:          awsTargetGroupSet.Spec.Template.Metadata.Labels,
 	}
 
-	_, err := awstargetgroupset.Sync(config)
+	results, err := awstargetgroupset.Sync(config)
 	if err != nil {
 		log.Error(err, "Syncing AWSTargetGroupSets")
 
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
+	}
+
+	for _, r := range results {
+		log.Info("%s AWSTargetGroup %s for cluster %s", r.Action, r.Name, r.Cluster)
 	}
 
 	r.Recorder.Event(&awsTargetGroupSet, corev1.EventTypeNormal, "SyncFinished", fmt.Sprintf("Sync finished on '%s'", awsTargetGroupSet.Name))
