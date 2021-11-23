@@ -13,6 +13,15 @@ In a standard scenario, a system update with `okra` would like the below.
 - **ArgoCD ApplicationSet** deploys your apps onto the new clusters
 - **Okra** updates the loadbalancer configuration to gradually migrate traffic to the new clusters, while running various checks to ensure application availability
 
+ToC:
+
+- [How it works](#how-it-works)
+- [Getting Started](#getting-started)
+- [Comparison with Flagger and Argo Rollouts](#comparison-with-flagger-and-argo-rollouts)
+- [CRDs](#crds)
+- [CLI](#cli)
+- [Why is it named "okra"?](#why-is-it-named-okra)
+
 ## Project Status and Scope
 
 `okra` (currently) integrates with AWS ALB and NLB and target groups for traffic management, CloudWatch Metrics and Datadog for canary analysis.
