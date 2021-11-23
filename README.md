@@ -141,6 +141,10 @@ Do either of the below to register clusters to ArgoCD and Okra
 - Run `argocd cluster add` on the new cluster and either (1) create a new ArgoCD `Application` custom resource per cluster or (2) let ArgoCD `ApplicationSet` custom resource to auto-deploy onto the clusters
 - Use Okra's `ClusterSet` to auto-import EKS clusters to ArgoCD and use `ApplicationSet` to auto-deploy
 
+See [Argocd cluster add - Argo CD - Declarative GitOps CD for Kubernetes](https://argo-cd.readthedocs.io/en/stable/user-guide/commands/argocd_cluster_add/) for more information on the `argocd cluster add` command.
+
+Also see [argoproj-labs/applicationset](https://github.com/argoproj-labs/applicationset) for more information on ArgoCD `ApplicationSet` and the controller.
+
 #### Auto-Deploy with ApplicationSet and ClusterSet
 
 Assuming your Okra instance has access to AWS EKS and STS APIs, you can use Okra's `ClusterSet` custom resources to
@@ -169,8 +173,25 @@ spec:
         service: demo
 ```
 
-Note that cluster secrets get `metadata.labels` of `service: demo`, so that `AWSTargetGroupSet` can
-discover those clusters by labels.
+Note that `template.metadat.labels.sevice` instruct cluster secrets to get `metadata.labels` of `service: demo`, so that `AWSTargetGroupSet` can discover those clusters by labels.
+
+An ArgoCD cluster secret created by the above `ClusterSet` should look the below, which is a regular ArgoCD cluster secret with the specified labels.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cdk1
+  namespace: default
+  labels:
+    argocd.argoproj.io/secret-type: cluster
+    service: demo
+type: Opaque
+data:
+  config: <BASE64 ENCODED CONFIG JSON>
+  name: <BASE64 ENCODED CLUSTER NAME>
+  server: <BASE64 ENCODED HTTPS URL OF K8S API ENDPOINT>
+```
 
 ### Register Target Groups
 
