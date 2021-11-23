@@ -1,5 +1,10 @@
 # Okra
 
+> This project is under heavy development and has no tagged releases yet.
+>
+> But I'd still appreciate it if you could help me by testing it and submitting pull requests,
+> so that you can get the first release earlier!
+
 `Okra` is a [Kubernetes controller](https://kubernetes.io/docs/concepts/architecture/controller/) and a set of [CRDs](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/) which provide advanced multi-cluster appilcation rollout capabilities, such as canary deployment of clusters.
 
 `okra` eases managing a lot of ephemeral Kubernetes clusters.
