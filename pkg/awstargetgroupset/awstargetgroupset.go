@@ -198,8 +198,9 @@ func CreateMissingAWSTargetGroups(config SyncInput) ([]SyncResult, error) {
 				labels[k] = v
 			}
 
-			labels[okrav1alpha1.AWSTargetGroupLabelNamespace] = b.Namespace
-			labels[okrav1alpha1.AWSTargetGroupLabelCluster] = config.ClusterName
+			labels[okrav1alpha1.AWSTargetGroupLabelBindingCluster] = config.ClusterName
+			labels[okrav1alpha1.AWSTargetGroupLabelBindingNamespace] = b.Namespace
+			labels[okrav1alpha1.AWSTargetGroupLabelBindingName] = b.Name
 
 			objects = append(objects, okrav1alpha1.AWSTargetGroup{
 				TypeMeta: metav1.TypeMeta{

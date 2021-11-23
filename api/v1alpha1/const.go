@@ -3,6 +3,7 @@ package v1alpha1
 const (
 	DefaultVersionLabelKey = "okra.mumo.co/version"
 
-	AWSTargetGroupLabelCluster   = "okra.mumo.co/target-group-cluster"
-	AWSTargetGroupLabelNamespace = "okra.mumo.co/target-group-namespace"
+	AWSTargetGroupLabelBindingCluster   = "okra.mumo.co/target-group-binding-cluster"
+	AWSTargetGroupLabelBindingNamespace = "okra.mumo.co/target-group-binding-namespace"
+	AWSTargetGroupLabelBindingName      = "okra.mumo.co/target-group-binding-name"
 )
