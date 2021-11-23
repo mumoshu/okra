@@ -44,6 +44,9 @@ func main() {
 // This replicates the behavior of `aws eks get-token --cluster-name $CLUSTER_NAME`
 // by using aws-iam-authenticator, which is the original implementation of the token generator that is,
 // AFAIK, later ported to aws-cli.
+//
+// See https://github.com/aws/aws-cli/blob/develop/awscli/customizations/eks/get_token.py for the aws-cli implementation
+// for reference.
 func eksGetToken(out io.Writer, clusterID, roleARAN string) error {
 	sess := awsclicompat.NewSession("", "")
 
