@@ -96,13 +96,11 @@ func (r *CellReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		return ctrl.Result{}, nil
 	}
 
-	config := cell.SyncInput{
+	err := cell.Sync(cell.SyncInput{
 		Cell:   &cellResource,
 		Client: r.Client,
 		Scheme: r.Scheme,
-	}
-
-	err := cell.Sync(config)
+	})
 	if err != nil {
 		log.Error(err, "Syncing Cell")
 
