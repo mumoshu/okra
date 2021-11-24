@@ -1,4 +1,4 @@
-package okra
+package cmd
 
 import (
 	okrav1alpha1 "github.com/mumoshu/okra/api/v1alpha1"
@@ -10,7 +10,7 @@ import (
 func syncAWSApplicationLoadBalancerConfigCommand() *cobra.Command {
 	var syncInput func() *awsapplicationloadbalancer.SyncInput
 	cmd := &cobra.Command{
-		Use: "sync-awsapplicationloadbalancerconfig",
+		Use: "awsapplicationloadbalancerconfig",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			err := awsapplicationloadbalancer.Sync(*syncInput())
 			return err

@@ -1,4 +1,4 @@
-package okra
+package cmd
 
 import (
 	"fmt"
@@ -14,7 +14,7 @@ import (
 func updateAnalysisRunCommand() *cobra.Command {
 	var input func() *analysis.UpdateInput
 	cmd := &cobra.Command{
-		Use: "update-analysisrun",
+		Use: "analysisrun",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			err := analysis.Update(*input())
 			return err

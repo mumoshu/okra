@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/mumoshu/okra/cmd/okra"
+	"github.com/mumoshu/okra/pkg/okrad/cmd"
 )
 
 func main() {
-	if err := okra.Run(); err != nil {
+	if err := cmd.Run(); err != nil {
 		if os.Getenv("TRACE") != "" {
 			fmt.Fprintf(os.Stderr, "Error: %+v\n", err)
 		} else {

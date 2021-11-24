@@ -59,7 +59,8 @@ vet:
 	$(GO) vet ./...
 
 build: generate
-	$(GO) build .
+	mkdir -p bin
+	$(GO) build -o bin ./cmd/okra ./cmd/okrad ./cmd/okractl
 
 .PHONY: smoke
 smoke:

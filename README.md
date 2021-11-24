@@ -495,10 +495,15 @@ See [crd.md](/docs/crd.md) for more documentation and details of each CRD.
 
 ## CLI
 
-`okra` is the CLI application that consists of the controller and other utility commands for testing.
+`okra` provides 3 executables.
 
-We do our best to expose every single `okra` controller's functionality via respective `okra` CLI commands, so that you
-can test each functionality in isolation.
+- `okrad`: the Kubernetes controller manager that consists of various Kubernetes controller for Okra CRDs. Intended to be run in a Kubernetes cluster.
+- `okractl`: A `kubectl`-like CLI application that is for interacting with `okrad` through Kubernetes API server. Intended to be run on your machine or on a CI system for automation.
+- `okra`: the standalone CLI application that does its best to provide every single logic implemented in `okrad`'s controllers. Intended to be run in CI to replicate `okrad`'s functionality on a CI system, or to test each okra functionality in isolation.
+
+The standard and author's recommended usage of Okra involves `okrad` and `okractl`.
+
+For `okra`, we do our best to expose every single `okrad` + `okractl` functionality via respective `okra` CLI commands, so that you can test each functionality in isolation.
 
 It may be even possible to build your own CI job that replaces `okra` out of those commands!
 

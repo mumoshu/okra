@@ -28,8 +28,7 @@ spec:
       - name: manager
         image: controller:latest
         command:
-        - /okra
-        - controller-manager
+        - /okrad
         args:
         - --enable-leader-election
         - --sync-period=20s

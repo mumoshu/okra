@@ -31,8 +31,7 @@ spec:
         - --enable-leader-election
         - --sync-period={{ .Values.syncPeriod }}
         command:
-        - /okra
-        - controller-manager
+        - /okrad
         env:
         - name: PATH
           value: /bin

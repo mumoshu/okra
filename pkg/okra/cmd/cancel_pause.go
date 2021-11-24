@@ -1,4 +1,4 @@
-package okra
+package cmd
 
 import (
 	"github.com/mumoshu/okra/pkg/pause"
@@ -6,24 +6,24 @@ import (
 	"github.com/spf13/pflag"
 )
 
-func syncPauseCommand() *cobra.Command {
-	var input func() *pause.SyncInput
+func cancelPauseCommand() *cobra.Command {
+	var input func() *pause.CancelInput
 	cmd := &cobra.Command{
-		Use: "sync-pause",
+		Use: "pause",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			err := pause.Sync(*input())
+			err := pause.Cancel(*input())
 			return err
 		},
 	}
-	input = initSyncPauseFlags(cmd.Flags(), &pause.SyncInput{})
+	input = initCancelPauseFlags(cmd.Flags(), &pause.CancelInput{})
 	return cmd
 }
 
-func initSyncPauseFlags(flag *pflag.FlagSet, c *pause.SyncInput) func() *pause.SyncInput {
+func initCancelPauseFlags(flag *pflag.FlagSet, c *pause.CancelInput) func() *pause.CancelInput {
 	flag.StringVar(&c.Pause.ObjectMeta.Namespace, "namespace", "", "Namespace of the pause")
 	flag.StringVar(&c.Pause.ObjectMeta.Name, "name", "", "Name of the pause")
 
-	return func() *pause.SyncInput {
+	return func() *pause.CancelInput {
 		input := c
 		input.Pause = *c.Pause.DeepCopy()
 

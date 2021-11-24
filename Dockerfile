@@ -21,8 +21,7 @@ COPY . .
 RUN export GOOS=$(echo ${TARGETPLATFORM} | cut -d / -f1) && \
   export GOARCH=$(echo ${TARGETPLATFORM} | cut -d / -f2) && \
   GOARM=$(echo ${TARGETPLATFORM} | cut -d / -f3 | cut -c2-) && \
-  go build -a -o okra main.go && \
-  go build -a ./cmd/aws
+  go build -a -o . ./cmd/*
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
@@ -30,9 +29,10 @@ FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /
 
-COPY --from=builder /workspace/okra .
+COPY --from=builder /workspace/okra /workspace/okrad .
+COPY --from=builder /workspace/okractl /bin/okractl
 COPY --from=builder /workspace/aws /bin/aws
 
 USER nonroot:nonroot
 
-ENTRYPOINT ["/okra"]
+ENTRYPOINT ["/okrad"]
