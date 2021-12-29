@@ -121,6 +121,13 @@ type Metric struct {
 	Provider MetricProvider `json:"provider" protobuf:"bytes,10,opt,name=provider"`
 }
 
+// DryRun defines the settings for running the analysis in Dry-Run mode.
+type DryRun struct {
+	// Name of the metric which needs to be evaluated in the Dry-Run mode. Wildcard '*' is supported and denotes all
+	// the available metrics.
+	MetricName string `json:"metricName" protobuf:"bytes,1,opt,name=metricName"`
+}
+
 // EffectiveCount is the effective count based on whether or not count/interval is specified
 // If neither count or interval is specified, the effective count is 1
 // If only interval is specified, metric runs indefinitely and there is no effective count (nil)

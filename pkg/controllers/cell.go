@@ -120,5 +120,6 @@ func (r *CellReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&okrav1alpha1.AWSApplicationLoadBalancerConfig{}).
 		Owns(&okrav1alpha1.Pause{}).
 		Owns(&rolloutsv1alpha1.AnalysisRun{}).
+		Owns(&rolloutsv1alpha1.Experiment{}).
 		Complete(r)
 }
