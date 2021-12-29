@@ -120,9 +120,13 @@ kubectl apply -n argo-rollouts -f https://github.com/argoproj/argo-rollouts/rele
 
 Once your management cluster is up and running, install `okra` on it using Helm or Kustomize.
 
+**Option 1: Helm**:
+
 ```
 $ helm upgrade --install charts/okra -f values.yaml
 ```
+
+**Option 2: Kustomize**:
 
 ```
 $ kustomize build config/manager | kubectl apply -f
