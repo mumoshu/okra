@@ -13,6 +13,7 @@ import (
 	okrav1alpha1 "github.com/mumoshu/okra/api/v1alpha1"
 	"github.com/mumoshu/okra/pkg/awstargetgroupset"
 	"github.com/mumoshu/okra/pkg/clclient"
+	appsv1 "k8s.io/api/apps/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -278,6 +279,7 @@ func Sync(config SyncInput) error {
 		var (
 			passedAllCanarySteps bool
 			anyAnalysisRunFailed bool
+			experimentFailed     bool
 			desiredVerIsBlocked  bool
 		)
 
@@ -416,7 +418,7 @@ func Sync(config SyncInput) error {
 								},
 							}
 							if err := ctrl.SetControllerReference(&cell, &ar, scheme); err != nil {
-								log.Printf("Failed setting cnotroller reference on %s/%s: %v", ar.Namespace, ar.Name, err)
+								log.Printf("Failed setting controller reference on %s/%s: %v", ar.Namespace, ar.Name, err)
 							}
 
 							if err := runtimeClient.Create(ctx, &ar); err != nil {
@@ -446,6 +448,115 @@ func Sync(config SyncInput) error {
 						default:
 							return errors.New("too many analysis runs")
 						}
+					} else if step.Experiment != nil {
+						//
+						// Ensure that the previous experiments has been successful, if any
+						//
+
+						var experimentList rolloutsv1alpha1.ExperimentList
+
+						labelSelector, err := labels.Parse(LabelKeyStepIndex + "=" + stepIndexStr)
+						if err != nil {
+							return err
+						}
+
+						if err := runtimeClient.List(ctx, &experimentList, &client.ListOptions{
+							LabelSelector: labelSelector,
+						}); err != nil {
+							return err
+						}
+
+						numExperiments := len(experimentList.Items)
+
+						if numExperiments == 0 {
+							exTemplate := step.Experiment
+
+							d := exTemplate.Duration
+
+							var templates []rolloutsv1alpha1.TemplateSpec
+
+							for _, t := range exTemplate.Templates {
+								var rs appsv1.ReplicaSet
+								nsName := types.NamespacedName{Namespace: cell.Namespace, Name: string(t.SpecRef)}
+								if err := runtimeClient.Get(ctx, nsName, &rs); err != nil {
+									log.Printf("Failed getting experiment template replicaset %s: %v", nsName, err)
+									return err
+								}
+
+								templates = append(templates, rolloutsv1alpha1.TemplateSpec{
+									Name:     t.Name,
+									Replicas: t.Replicas,
+									Selector: t.Selector,
+									Template: rs.Spec.Template,
+								})
+							}
+
+							var analyses []rolloutsv1alpha1.ExperimentAnalysisTemplateRef
+							for _, a := range exTemplate.Analyses {
+								var args []rolloutsv1alpha1.Argument
+								for _, arg := range a.Args {
+									args = append(args, rolloutsv1alpha1.Argument{
+										Name: arg.Name,
+										// TODO
+										Value: &arg.Value,
+									})
+								}
+								analyses = append(analyses, rolloutsv1alpha1.ExperimentAnalysisTemplateRef{
+									Name:                  a.Name,
+									TemplateName:          a.TemplateName,
+									Args:                  args,
+									RequiredForCompletion: a.RequiredForCompletion,
+								})
+							}
+
+							ex := rolloutsv1alpha1.Experiment{
+								ObjectMeta: metav1.ObjectMeta{
+									Namespace: cell.Namespace,
+									Name:      fmt.Sprintf("%s-%d-%s", cell.Name, stepIndex, "experiment"),
+									Labels: map[string]string{
+										LabelKeyStepIndex: stepIndexStr,
+										LabelKeyCell:      cell.Name,
+									},
+								},
+								Spec: rolloutsv1alpha1.ExperimentSpec{
+									Duration:  d,
+									Templates: templates,
+									Analyses:  analyses,
+								},
+							}
+							if err := ctrl.SetControllerReference(&cell, &ex, scheme); err != nil {
+								log.Printf("Failed setting controller reference on %s/%s: %v", ex.Namespace, ex.Name, err)
+							}
+
+							if err := runtimeClient.Create(ctx, &ex); err != nil {
+								return err
+							}
+
+							log.Printf("Created experiment %s", ex.Name)
+
+							break STEPS
+						}
+
+						if numExperiments == 1 {
+							for _, ex := range experimentList.Items {
+								if ex.Status.Phase != rolloutsv1alpha1.AnalysisPhaseSuccessful {
+									if ex.Status.Phase == rolloutsv1alpha1.AnalysisPhaseFailed {
+										// TODO Suspend and mark it as permanent failure when experiment timed out
+										log.Printf("Experiment %s failed", ex.Name)
+
+										experimentFailed = true
+										break STEPS
+									}
+
+									log.Printf("Waiting for experiment %s of %s to become %s", ex.Name, ex.Status.Phase, rolloutsv1alpha1.AnalysisPhaseSuccessful)
+
+									// We need to wait for this analysis run to succeed
+									break STEPS
+								}
+							}
+						}
+
+						return errors.New("too many experiments")
 					} else if step.SetWeight != nil {
 						desiredStableTGsWeight -= int(*step.SetWeight)
 
@@ -526,7 +637,7 @@ func Sync(config SyncInput) error {
 				desiredStableTGsWeight = 0
 			}
 
-			if anyAnalysisRunFailed {
+			if anyAnalysisRunFailed || experimentFailed {
 				desiredStableTGsWeight = 100
 			}
 
