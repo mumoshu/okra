@@ -101,8 +101,22 @@ It detects new `target groups`, and live migrate traffic by hot-swaping old targ
 
 ### Install Okra
 
-First, you need to provision a Kubernetes cluster that is running ArgoCD and ArgoCD ApplicationSet controller.
+First, you need to provision a Kubernetes cluster that is running ArgoCD, Argo Rollouts, and ArgoCD ApplicationSet controller.
 We call it `management cluster` in the following guide.
+
+To deploy required components onto the management cluster, use the following snippet:
+
+```shell
+# 1. Install ArgoCD and ApplicationSet
+# https://argocd-applicationset.readthedocs.io/en/stable/Getting-Started/#b-install-applicationset-and-argo-cd-together
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/applicationset/v0.3.0/manifests/install-with-argo-cd.yaml
+
+# 2. Install Argo Rollouts
+# https://argoproj.github.io/argo-rollouts/installation/
+kubectl create namespace argo-rollouts
+kubectl apply -n argo-rollouts -f https://github.com/argoproj/argo-rollouts/releases/latest/download/install.yaml
+```
 
 Once your management cluster is up and running, install `okra` on it using Helm or Kustomize.
 
