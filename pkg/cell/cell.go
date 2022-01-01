@@ -25,8 +25,9 @@ import (
 )
 
 const (
-	LabelKeyStepIndex = "okra.mumo.co/step-index"
-	LabelKeyCell      = "cell"
+	LabelKeyStepIndex    = "okra.mumo.co/step-index"
+	LabelKeyTemplateHash = "okra.mumo.co/template-hash"
+	LabelKeyCell         = "cell"
 )
 
 type Provider struct {
@@ -489,7 +490,8 @@ func Sync(config SyncInput) error {
 
 					numExperiments := len(experimentList.Items)
 
-					if numExperiments == 0 {
+					var ex rolloutsv1alpha1.Experiment
+					{
 						exTemplate := step.Experiment
 
 						d := exTemplate.Duration
@@ -535,30 +537,81 @@ func Sync(config SyncInput) error {
 							})
 						}
 
-						ex := rolloutsv1alpha1.Experiment{
+						spec := rolloutsv1alpha1.ExperimentSpec{
+							Duration:  d,
+							Templates: templates,
+							Analyses:  analyses,
+						}
+
+						templateHash := sync.ComputeHash(spec)
+
+						ex = rolloutsv1alpha1.Experiment{
 							ObjectMeta: metav1.ObjectMeta{
 								Namespace: cell.Namespace,
 								Name:      fmt.Sprintf("%s-%d-%s", cell.Name, stepIndex, "experiment"),
 								Labels: map[string]string{
-									LabelKeyStepIndex: stepIndexStr,
-									LabelKeyCell:      cell.Name,
+									LabelKeyStepIndex:    stepIndexStr,
+									LabelKeyCell:         cell.Name,
+									LabelKeyTemplateHash: templateHash,
 								},
 							},
-							Spec: rolloutsv1alpha1.ExperimentSpec{
-								Duration:  d,
-								Templates: templates,
-								Analyses:  analyses,
-							},
+							Spec: spec,
 						}
 						if err := ctrl.SetControllerReference(&cell, &ex, scheme); err != nil {
 							log.Printf("Failed setting controller reference on %s/%s: %v", ex.Namespace, ex.Name, err)
 						}
+					}
 
+					if numExperiments == 0 {
 						if err := runtimeClient.Create(ctx, &ex); err != nil {
 							return err
 						}
 
 						log.Printf("Created experiment %s", ex.Name)
+
+						break STEPS
+					}
+
+					if numExperiments > 1 {
+						return errors.New("too many experiments")
+					}
+
+					var currentTemplateHash string
+					if annotations := experimentList.Items[0].GetAnnotations(); annotations != nil {
+						if templateHash := annotations[LabelKeyTemplateHash]; templateHash != "" {
+							currentTemplateHash = templateHash
+						}
+					}
+
+					var desiredTemplateHash string
+					if annotations := ex.GetAnnotations(); annotations != nil {
+						if templateHash := annotations[LabelKeyTemplateHash]; templateHash != "" {
+							desiredTemplateHash = templateHash
+						}
+					}
+
+					if currentTemplateHash != desiredTemplateHash {
+						var current rolloutsv1alpha1.Experiment
+
+						if err := runtimeClient.Get(ctx, types.NamespacedName{Namespace: ex.Namespace, Name: ex.Name}, &current); err != nil {
+							return err
+						}
+
+						current.Spec = ex.Spec
+
+						for k, v := range ex.Labels {
+							current.Labels[k] = v
+						}
+
+						for k, v := range ex.Annotations {
+							current.Annotations[k] = v
+						}
+
+						if err := runtimeClient.Update(ctx, &current); err != nil {
+							return err
+						}
+
+						log.Printf("Updated experiment %s", ex.Name)
 
 						break STEPS
 					}
@@ -582,7 +635,6 @@ func Sync(config SyncInput) error {
 						}
 					}
 
-					return errors.New("too many experiments")
 				} else if step.SetWeight != nil {
 					desiredStableTGsWeight -= int(*step.SetWeight)
 
