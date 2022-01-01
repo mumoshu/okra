@@ -7,12 +7,12 @@ spec:
   - name: service-name
   metrics:
   - name: success-rate
-    interval: 5m
+    interval: 1m
     successCondition: result >= 0.95
     failureLimit: 3
     provider:
       datadog:
-        interval: 5m
+        interval: 1m
         query: |
           sum:http_requests_total{kube_deployment:{{args.service-name}}, code:200} /
           sum:http_requests_total{kube_deployment:{{args.service-name}}}
