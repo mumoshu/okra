@@ -883,6 +883,8 @@ func Sync(config SyncInput) error {
 		}
 	}
 
+	log.Printf("Finishing reconcilation. desiredTargetTGsWeight=%v, passedAllCanarySteps=%v, anyStepFailed=%v, desiredVerIsBlocked=%v", desiredStableTGsWeight, passedAllCanarySteps, anyStepFailed, desiredVerIsBlocked)
+
 	if desiredStableTGsWeight == 0 && passedAllCanarySteps || anyStepFailed || desiredVerIsBlocked {
 		// Seems like we need to explicitly specify the namespace with client.InNamespace.
 		// Otherwise it results in `Error: the server could not find the requested resource (delete analysisruns.argoproj.io)`
