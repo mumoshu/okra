@@ -102,7 +102,7 @@ func (r *AWSApplicationLoadBalancerConfigReconciler) Reconcile(req ctrl.Request)
 	if err != nil {
 		log.Error(err, "Syncing AWSApplicationLoadBalancerConfig")
 
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
 	r.Recorder.Event(&awsALBConfig, corev1.EventTypeNormal, "SyncFinished", fmt.Sprintf("Sync finished on '%s'", awsALBConfig.Name))
