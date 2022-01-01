@@ -504,10 +504,15 @@ func Sync(config SyncInput) error {
 								return err
 							}
 
+							s := t.Selector
+							if s == nil {
+								s = rs.Spec.Selector
+							}
+
 							templates = append(templates, rolloutsv1alpha1.TemplateSpec{
 								Name:     t.Name,
 								Replicas: t.Replicas,
-								Selector: t.Selector,
+								Selector: s,
 								Template: rs.Spec.Template,
 							})
 						}
