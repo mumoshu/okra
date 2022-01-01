@@ -452,6 +452,13 @@ func Sync(config SyncInput) error {
 						break STEPS
 					case 1:
 						for _, ar := range analysisRunList.Items {
+							if ar.Status.Phase == rolloutsv1alpha1.AnalysisPhaseError {
+								log.Printf("AnalysisRun %s failed with error: %v", ar.Name, err)
+
+								anyAnalysisRunFailed = true
+								break STEPS
+							}
+
 							if ar.Status.Phase != rolloutsv1alpha1.AnalysisPhaseSuccessful {
 								if ar.Status.Phase == rolloutsv1alpha1.AnalysisPhaseFailed {
 									// TODO Suspend and mark it as permanent failure when analysis run timed out
@@ -618,6 +625,13 @@ func Sync(config SyncInput) error {
 
 					if numExperiments == 1 {
 						for _, ex := range experimentList.Items {
+							if ex.Status.Phase == rolloutsv1alpha1.AnalysisPhaseError {
+								log.Printf("Experiment %s failed with error: %v", ex.Name, err)
+
+								experimentFailed = true
+								break STEPS
+							}
+
 							if ex.Status.Phase != rolloutsv1alpha1.AnalysisPhaseSuccessful {
 								if ex.Status.Phase == rolloutsv1alpha1.AnalysisPhaseFailed {
 									// TODO Suspend and mark it as permanent failure when experiment timed out
