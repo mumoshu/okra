@@ -8,5 +8,7 @@ func init() {
 		&ClusterAnalysisTemplateList{},
 		&AnalysisRun{},
 		&AnalysisRunList{},
+		&Experiment{},
+		&ExperimentList{},
 	)
 }
