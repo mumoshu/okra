@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: success-rate-dd
+spec:
+  args:
+  - name: service-name
+  metrics:
+  - name: success-rate
+    interval: 5m
+    successCondition: result >= 0.95
+    failureLimit: 3
+    provider:
+      datadog:
+        interval: 5m
+        query: |
+          sum:http_requests_total{kube_deployment:{{args.service-name}}, code:200} /
+          sum:http_requests_total{kube_deployment:{{args.service-name}}}

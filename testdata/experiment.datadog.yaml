@@ -1,0 +1,57 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Experiment
+metadata:
+  name: example-experiment
+spec:
+  # Duration of the experiment, beginning from when all ReplicaSets became healthy (optional)
+  # If omitted, will run indefinitely until terminated, or until all analyses which were marked
+  # `requiredForCompletion` have completed.
+  duration: 20m
+
+  # Deadline in seconds in which a ReplicaSet should make progress towards becoming available.
+  # If exceeded, the Experiment will fail.
+  progressDeadlineSeconds: 30
+
+  # List of pod template specs to run in the experiment as ReplicaSets
+  templates:
+  - name: wy
+    # Number of replicas to run (optional). If omitted, will run a single replica
+    replicas: 1
+    selector:
+      matchLabels:
+        app: wy
+    template:
+      metadata:
+        labels:
+          app: wy
+      spec:
+        containers:
+        - name: wy
+          args:
+          - repeat
+          - get
+          - -forever
+          - -interval=1s
+          - -url=http://localhost:8080/
+          - -argocd-cluster-secret=cdk1
+          - -service=wy-serve
+          - -local-port=8080
+          - -remote-port=8080
+          image: mumoshu/wy:latest
+          imagePullPolicy: Always
+          ports:
+          - name: http
+            containerPort: 8080
+            protocol: TCP
+          envFrom:
+          - secretRef:
+              name: wy
+              optional: true
+  # List of AnalysisTemplate references to perform during the experiment
+  analyses:
+  - name: success-rate
+    templateName: success-rate-dd
+    args:
+    - name: service-name
+      value: wy-serve
+    requiredForCompletion: true
