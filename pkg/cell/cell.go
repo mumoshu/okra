@@ -326,8 +326,7 @@ func Sync(config SyncInput) error {
 
 	var (
 		passedAllCanarySteps bool
-		anyAnalysisRunFailed bool
-		experimentFailed     bool
+		anyStepFailed        bool
 		desiredVerIsBlocked  bool
 	)
 
@@ -481,7 +480,7 @@ func Sync(config SyncInput) error {
 							if ar.Status.Phase == rolloutsv1alpha1.AnalysisPhaseError {
 								log.Printf("AnalysisRun %s failed with error: %v", ar.Name, err)
 
-								anyAnalysisRunFailed = true
+								anyStepFailed = true
 								break STEPS
 							}
 
@@ -490,7 +489,7 @@ func Sync(config SyncInput) error {
 									// TODO Suspend and mark it as permanent failure when analysis run timed out
 									log.Printf("AnalysisRun %s failed", ar.Name)
 
-									anyAnalysisRunFailed = true
+									anyStepFailed = true
 									break STEPS
 								}
 
@@ -654,7 +653,7 @@ func Sync(config SyncInput) error {
 							if ex.Status.Phase == rolloutsv1alpha1.AnalysisPhaseError {
 								log.Printf("Experiment %s failed with error: %v", ex.Name, err)
 
-								experimentFailed = true
+								anyStepFailed = true
 								break STEPS
 							}
 
@@ -663,7 +662,7 @@ func Sync(config SyncInput) error {
 									// TODO Suspend and mark it as permanent failure when experiment timed out
 									log.Printf("Experiment %s failed", ex.Name)
 
-									experimentFailed = true
+									anyStepFailed = true
 									break STEPS
 								}
 
@@ -755,7 +754,7 @@ func Sync(config SyncInput) error {
 			desiredStableTGsWeight = 0
 		}
 
-		if anyAnalysisRunFailed || experimentFailed {
+		if anyStepFailed {
 			desiredStableTGsWeight = 100
 		}
 
@@ -763,7 +762,7 @@ func Sync(config SyncInput) error {
 			return fmt.Errorf("stable tgs weight cannot be less than 0: %v", desiredStableTGsWeight)
 		}
 
-		log.Printf("stable weight: %d -> %d\n", currentStableTGsWeight, desiredStableTGsWeight)
+		log.Printf("stable weight(%v): %d -> %d\n", maxStableVer, currentStableTGsWeight, desiredStableTGsWeight)
 
 		// Do update by step weight
 		var updatedTGs []okrav1alpha1.ForwardTargetGroup
@@ -848,7 +847,7 @@ func Sync(config SyncInput) error {
 		}
 	}
 
-	if anyAnalysisRunFailed {
+	if anyStepFailed {
 		var bl okrav1alpha1.VersionBlocklist
 
 		item := okrav1alpha1.VersionBlocklistItem{
@@ -884,7 +883,7 @@ func Sync(config SyncInput) error {
 		}
 	}
 
-	if desiredStableTGsWeight == 0 && passedAllCanarySteps || anyAnalysisRunFailed || desiredVerIsBlocked {
+	if desiredStableTGsWeight == 0 && passedAllCanarySteps || anyStepFailed || desiredVerIsBlocked {
 		// Seems like we need to explicitly specify the namespace with client.InNamespace.
 		// Otherwise it results in `Error: the server could not find the requested resource (delete analysisruns.argoproj.io)`
 		if err := runtimeClient.DeleteAllOf(ctx, &rolloutsv1alpha1.AnalysisRun{}, client.InNamespace(cell.Namespace), &client.DeleteAllOfOptions{
