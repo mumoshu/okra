@@ -13,6 +13,7 @@ import (
 	okrav1alpha1 "github.com/mumoshu/okra/api/v1alpha1"
 	"github.com/mumoshu/okra/pkg/awstargetgroupset"
 	"github.com/mumoshu/okra/pkg/clclient"
+	"github.com/mumoshu/okra/pkg/sync"
 	appsv1 "k8s.io/api/apps/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -73,6 +74,7 @@ func Sync(config SyncInput) error {
 
 	var albConfig okrav1alpha1.AWSApplicationLoadBalancerConfig
 	var albConfigExists bool
+	var desiredALBConfigSpec okrav1alpha1.AWSApplicationLoadBalancerConfigSpec
 
 	if err := runtimeClient.Get(ctx, types.NamespacedName{Namespace: cell.Namespace, Name: cell.Name}, &albConfig); err != nil {
 		log.Printf("%v\n", err)
@@ -88,6 +90,13 @@ func Sync(config SyncInput) error {
 	} else {
 		albConfigExists = true
 	}
+
+	const LabelKeyALBConfigHash = "alb-config-hash"
+
+	desiredALBConfigSpec.Listener = cell.Spec.Ingress.AWSApplicationLoadBalancer.Listener
+	desiredALBConfigSpec.ListenerARN = albListenerARN
+	desiredALBConfigSpecHash := sync.ComputeHash(desiredALBConfigSpec)
+	currentALBConfigSpecHash := albConfig.Annotations[LabelKeyALBConfigHash]
 
 	labelKeys := cell.Spec.Ingress.AWSApplicationLoadBalancer.TargetGroupSelector.VersionLabels
 	if len(labelKeys) == 0 {
@@ -178,6 +187,8 @@ func Sync(config SyncInput) error {
 			albConfig.Spec.Listener.Rule.Forward.TargetGroups = append(albConfig.Spec.Listener.Rule.Forward.TargetGroups, tg)
 		}
 
+		metav1.SetMetaDataAnnotation(&albConfig.ObjectMeta, LabelKeyALBConfigHash, desiredALBConfigSpecHash)
+
 		if err := runtimeClient.Create(ctx, &albConfig); err != nil {
 			return fmt.Errorf("creating albconfig: %w", err)
 		}
@@ -188,6 +199,14 @@ func Sync(config SyncInput) error {
 		}
 
 		log.Printf("Created target groups and weights to: %v", updated)
+	} else if currentALBConfigSpecHash != desiredALBConfigSpecHash {
+		metav1.SetMetaDataAnnotation(&albConfig.ObjectMeta, LabelKeyALBConfigHash, desiredALBConfigSpecHash)
+
+		albConfig.Spec = desiredALBConfigSpec
+
+		if err := runtimeClient.Update(ctx, &albConfig); err != nil {
+			return fmt.Errorf("updating albconfig: %w", err)
+		}
 	} else {
 		// This is a standard cell update for releasing a new app/cluster version.
 		// Do a canary release.
