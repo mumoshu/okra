@@ -103,31 +103,22 @@ func Sync(config SyncInput) error {
 		labelKeys = []string{okrav1alpha1.DefaultVersionLabelKey}
 	}
 
-	latestVer, latestTGs, err := awstargetgroupset.ListLatestAWSTargetGroups(awstargetgroupset.ListLatestAWSTargetGroupsInput{
+	v := cell.Spec.Version
+
+	desiredVer, latestTGs, err := awstargetgroupset.ListLatestAWSTargetGroups(awstargetgroupset.ListLatestAWSTargetGroupsInput{
 		ListAWSTargetGroupsInput: awstargetgroupset.ListAWSTargetGroupsInput{
 			NS:       cell.Namespace,
 			Selector: tgSelector.String(),
 		},
 		SemverLabelKeys: labelKeys,
+		Version:         v,
 	})
 	if err != nil {
 		return err
 	}
 
-	var desiredVer *semver.Version
-
-	if cell.Spec.Version != "" {
-		ver, err := semver.Parse(cell.Spec.Version)
-		if err != nil {
-			log.Printf("Failed to parse cell.Spec.Version(%s): %v", cell.Spec.Version, err)
-			return err
-		}
-
-		log.Printf("Using cell.Spec.Version(%s) instead of latest version(%s)", ver, desiredVer)
-
-		desiredVer = &ver
-	} else {
-		desiredVer = latestVer
+	if v != "" {
+		log.Printf("Using cell.Spec.Version(%s) instead of latest version", v)
 	}
 
 	currentTGs, err := awstargetgroupset.ListAWSTargetGroups(awstargetgroupset.ListAWSTargetGroupsInput{
@@ -164,7 +155,7 @@ func Sync(config SyncInput) error {
 		threshold = int(*cell.Spec.Replicas)
 	}
 
-	log.Printf("cell=%s/%s, albConfigExists=%v, tgSelector=%s, len(latestTGs)=%d, len(desiredTGs)=%d\n", cell.Namespace, cell.Name, albConfigExists, tgSelector.String(), len(latestTGs), len(desiredTGs))
+	log.Printf("cell=%s/%s, albConfigExists=%v, tgSelector=%s, len(latestTGs)=%d\n", cell.Namespace, cell.Name, albConfigExists, tgSelector.String(), len(latestTGs))
 
 	if numLatestTGs != threshold {
 		return nil

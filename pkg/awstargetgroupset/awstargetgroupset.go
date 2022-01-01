@@ -468,45 +468,45 @@ func ListLatestAWSTargetGroups(config ListLatestAWSTargetGroupsInput) (*semver.V
 
 	versionedGroups := map[string]entry{}
 
+	var maxVer *semver.Version
+
+	for _, g := range groups {
+		g := g
+
+		var verStr string
+
+		for _, labelKey := range labelKeys {
+			verStr = g.Labels[labelKey]
+			if verStr != "" {
+				break
+			}
+		}
+
+		if verStr == "" {
+			return nil, nil, fmt.Errorf("no semver label found on group: %v", g)
+		}
+
+		ver, err := semver.Parse(verStr)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		if maxVer == nil {
+			maxVer = &ver
+		} else if maxVer.LT(ver) {
+			maxVer = &ver
+		}
+
+		e := versionedGroups[ver.String()]
+
+		e.ver = ver
+		e.groups = append(e.groups, g)
+
+		versionedGroups[ver.String()] = e
+	}
+
 	if latestVer == nil {
-		for _, g := range groups {
-			g := g
-
-			var verStr string
-
-			for _, labelKey := range labelKeys {
-				verStr = g.Labels[labelKey]
-				if verStr != "" {
-					break
-				}
-			}
-
-			if verStr == "" {
-				return nil, nil, fmt.Errorf("no semver label found on group: %v", g)
-			}
-
-			ver, err := semver.Parse(verStr)
-			if err != nil {
-				return nil, nil, err
-			}
-
-			if latestVer == nil {
-				latestVer = &ver
-			} else if latestVer.LT(ver) {
-				latestVer = &ver
-			}
-
-			e := versionedGroups[ver.String()]
-
-			e.ver = ver
-			e.groups = append(e.groups, g)
-
-			versionedGroups[ver.String()] = e
-		}
-
-		if latestVer == nil {
-			return nil, nil, nil
-		}
+		latestVer = maxVer
 	}
 
 	latest := versionedGroups[latestVer.String()]
