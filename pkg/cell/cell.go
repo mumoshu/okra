@@ -349,24 +349,6 @@ func Sync(config SyncInput) error {
 			return err
 		}
 
-		var maxSuccessfulAnalysisRunStepIndex int
-		for _, ar := range analysisRunList.Items {
-			if ar.Status.Phase.Completed() {
-				stepIndexStr, ok := ar.Labels[LabelKeyStepIndex]
-				if !ok {
-					return fmt.Errorf("AnalysisRun %q does not have as step-index label. Perhaps this is not the one managed by okra?", ar.Name)
-				}
-				stepIndex, err := strconv.Atoi(stepIndexStr)
-				if err != nil {
-					return fmt.Errorf("parsing step index %q: %v", stepIndexStr, err)
-				}
-
-				if stepIndex > maxSuccessfulAnalysisRunStepIndex {
-					maxSuccessfulAnalysisRunStepIndex = stepIndex
-				}
-			}
-		}
-
 		ccr := cellComponentReconciler{
 			cell:          cell,
 			runtimeClient: runtimeClient,
