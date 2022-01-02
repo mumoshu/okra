@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	rolloutsv1alpha1 "github.com/mumoshu/okra/api/rollouts/v1alpha1"
 	okrav1alpha1 "github.com/mumoshu/okra/api/v1alpha1"
@@ -305,6 +306,74 @@ func (s cellComponentReconciler) reconcileExperiment(ctx context.Context, compon
 
 		// We need to wait for this analysis run to succeed
 		return ComponentInProgress, nil
+	}
+
+	return ComponentPassed, nil
+}
+
+func (s cellComponentReconciler) reconcilePause(ctx context.Context, componentID string, pauseTemplate *rolloutsv1alpha1.RolloutPause) (componentReconcilationResult, error) {
+	// TODO List Pause resource and break if it isn't expired yet
+	var pauseList okrav1alpha1.PauseList
+
+	cell := s.cell
+	runtimeClient := s.runtimeClient
+	scheme := s.scheme
+
+	ns := cell.Namespace
+
+	labels := map[string]string{
+		LabelKeyStepIndex: componentID,
+		LabelKeyCell:      cell.Name,
+	}
+
+	if err := runtimeClient.List(ctx, &pauseList, client.InNamespace(ns), client.MatchingLabels(labels)); err != nil {
+		return ComponentInProgress, err
+	}
+
+	switch c := len(pauseList.Items); c {
+	case 0:
+		t := metav1.Time{
+			Time: time.Now().Add(time.Duration(time.Second.Nanoseconds() * int64(pauseTemplate.DurationSeconds()))),
+		}
+
+		pause := okrav1alpha1.Pause{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: ns,
+				Name:      fmt.Sprintf("%s-%s-%s", cell.Name, componentID, "pause"),
+				Labels:    labels,
+			},
+			Spec: okrav1alpha1.PauseSpec{
+				ExpireTime: t,
+			},
+		}
+		ctrl.SetControllerReference(&cell, &pause, scheme)
+
+		if err := runtimeClient.Create(ctx, &pause); err != nil {
+			return ComponentInProgress, err
+		}
+
+		log.Printf("Initiated pause %s until %s", pause.Name, t)
+
+		return ComponentInProgress, nil
+	case 1:
+		pause := pauseList.Items[0]
+
+		switch phase := pause.Status.Phase; phase {
+		case okrav1alpha1.PausePhaseCancelled:
+			log.Printf("Observed that pause %s had been cancelled. Continuing to the next step", pause.Name)
+		case okrav1alpha1.PausePhaseExpired:
+			log.Printf("Observed that pause %s had expired. Continuing to the next step", pause.Name)
+		case okrav1alpha1.PausePhaseStarted:
+			log.Printf("Still waiting for pause %s to expire or get cancelled", pause.Name)
+			return ComponentInProgress, nil
+		case "":
+			log.Printf("Still waiting for pause %s to start", pause.Name)
+			return ComponentInProgress, nil
+		default:
+			return ComponentFailed, fmt.Errorf("unexpected pause phase: %s", phase)
+		}
+	default:
+		return ComponentInProgress, fmt.Errorf("unexpected number of pauses found: %d", c)
 	}
 
 	return ComponentPassed, nil

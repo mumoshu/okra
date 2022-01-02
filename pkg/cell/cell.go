@@ -6,7 +6,6 @@ import (
 	"log"
 	"sort"
 	"strconv"
-	"time"
 
 	"github.com/blang/semver"
 	rolloutsv1alpha1 "github.com/mumoshu/okra/api/rollouts/v1alpha1"
@@ -442,64 +441,14 @@ func Sync(config SyncInput) error {
 						break STEPS
 					}
 				} else if step.Pause != nil {
-					// TODO List Pause resource and break if it isn't expired yet
-					var pauseList okrav1alpha1.PauseList
-
-					ns := cell.Namespace
-
-					labels := map[string]string{
-						LabelKeyStepIndex: stepIndexStr,
-						LabelKeyCell:      cell.Name,
-					}
-
-					if err := runtimeClient.List(ctx, &pauseList, client.InNamespace(ns), client.MatchingLabels(labels)); err != nil {
+					r, err := ccr.reconcilePause(ctx, stepIndexStr, step.Pause)
+					if err != nil {
 						return err
-					}
-
-					switch c := len(pauseList.Items); c {
-					case 0:
-						t := metav1.Time{
-							Time: time.Now().Add(time.Duration(time.Second.Nanoseconds() * int64(step.Pause.DurationSeconds()))),
-						}
-
-						pause := okrav1alpha1.Pause{
-							ObjectMeta: metav1.ObjectMeta{
-								Namespace: ns,
-								Name:      fmt.Sprintf("%s-%d-%s", cell.Name, stepIndex, "pause"),
-								Labels:    labels,
-							},
-							Spec: okrav1alpha1.PauseSpec{
-								ExpireTime: t,
-							},
-						}
-						ctrl.SetControllerReference(&cell, &pause, scheme)
-
-						if err := runtimeClient.Create(ctx, &pause); err != nil {
-							return err
-						}
-
-						log.Printf("Initiated pause %s until %s", pause.Name, t)
-
+					} else if r == ComponentInProgress {
 						break STEPS
-					case 1:
-						pause := pauseList.Items[0]
-
-						switch phase := pause.Status.Phase; phase {
-						case okrav1alpha1.PausePhaseCancelled:
-							log.Printf("Observed that pause %s had been cancelled. Continuing to the next step", pause.Name)
-						case okrav1alpha1.PausePhaseExpired:
-							log.Printf("Observed that pause %s had expired. Continuing to the next step", pause.Name)
-						case okrav1alpha1.PausePhaseStarted:
-							log.Printf("Still waiting for pause %s to expire or get cancelled", pause.Name)
-							break STEPS
-						case "":
-							log.Printf("Still waiting for pause %s to start", pause.Name)
-							break STEPS
-						default:
-							return fmt.Errorf("unexpected pause phase: %s", phase)
-						}
-					default:
-						return fmt.Errorf("unexpected number of pauses found: %d", c)
+					} else if r == ComponentFailed {
+						anyStepFailed = true
+						break STEPS
 					}
 				} else {
 					return fmt.Errorf("steps[%d]: only setWeight, analysis, and pause step are supported. got %v", stepIndex, step)
