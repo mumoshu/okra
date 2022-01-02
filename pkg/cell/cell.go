@@ -340,223 +340,226 @@ func Sync(config SyncInput) error {
 		}
 	}
 
-	if !desiredVerIsBlocked {
-		canary := cell.Spec.UpdateStrategy.Canary
-		canarySteps := canary.Steps
+	if desiredVerIsBlocked {
+		log.Printf("Version %s is blocked. Please specify another version that is not blocked to start a rollout.", desiredVer)
+		return nil
+	}
 
-		passedAllCanarySteps = currentCanaryTGsWeight == 100
+	canary := cell.Spec.UpdateStrategy.Canary
+	canarySteps := canary.Steps
 
-		if len(canarySteps) > 0 && !passedAllCanarySteps {
-			var analysisRunList rolloutsv1alpha1.AnalysisRunList
+	passedAllCanarySteps = currentCanaryTGsWeight == 100
 
-			if err := runtimeClient.List(ctx, &analysisRunList, &client.ListOptions{
-				LabelSelector: everythingOwnedByThisCell,
-			}); err != nil {
-				return err
-			}
+	if len(canarySteps) > 0 && !passedAllCanarySteps {
+		var analysisRunList rolloutsv1alpha1.AnalysisRunList
 
-			var maxSuccessfulAnalysisRunStepIndex int
-			for _, ar := range analysisRunList.Items {
-				if ar.Status.Phase.Completed() {
-					stepIndexStr, ok := ar.Labels[LabelKeyStepIndex]
-					if !ok {
-						log.Printf("AnalysisRun %q does not have as step-index label. Perhaps this is not the one managed by okra? Skipping.", ar.Name)
-						continue
-					}
-					stepIndex, err := strconv.Atoi(stepIndexStr)
-					if err != nil {
-						return fmt.Errorf("parsing step index %q: %v", stepIndexStr, err)
-					}
+		if err := runtimeClient.List(ctx, &analysisRunList, &client.ListOptions{
+			LabelSelector: everythingOwnedByThisCell,
+		}); err != nil {
+			return err
+		}
 
-					if stepIndex > maxSuccessfulAnalysisRunStepIndex {
-						maxSuccessfulAnalysisRunStepIndex = stepIndex
-					}
+		var maxSuccessfulAnalysisRunStepIndex int
+		for _, ar := range analysisRunList.Items {
+			if ar.Status.Phase.Completed() {
+				stepIndexStr, ok := ar.Labels[LabelKeyStepIndex]
+				if !ok {
+					log.Printf("AnalysisRun %q does not have as step-index label. Perhaps this is not the one managed by okra? Skipping.", ar.Name)
+					continue
 				}
-			}
-
-			ccr := cellComponentReconciler{
-				cell:          cell,
-				runtimeClient: runtimeClient,
-				scheme:        scheme,
-			}
-
-		STEPS:
-			for stepIndex, step := range canarySteps {
-				stepIndexStr := strconv.Itoa(stepIndex)
-
-				if a := canary.Analysis; a != nil {
-					// A background analysis works very much like
-					// Argo Rollouts Background Analysis as documented at
-					// https://argoproj.github.io/argo-rollouts/features/analysis/#background-analysis
-					// except that okra's works against clusters(backing e.g. AWSTargetGroups) instead of replicasets.
-
-					start := int32(0)
-					if a.StartingStep != nil {
-						start = *a.StartingStep
-					}
-
-					if int32(stepIndex) >= start {
-						r, err := ccr.reconcileAnalysisRun(ctx, "bg", &a.RolloutAnalysis)
-						if err != nil {
-							return err
-						} else if r == ComponentFailed {
-							anyStepFailed = true
-							break STEPS
-						}
-
-						// We accept both StepInProgress and StepPassed
-						// as a background analysis makes the cell degraded
-						// only if it failed.
-					}
+				stepIndex, err := strconv.Atoi(stepIndexStr)
+				if err != nil {
+					return fmt.Errorf("parsing step index %q: %v", stepIndexStr, err)
 				}
 
-				if step.Analysis != nil {
-					r, err := ccr.reconcileAnalysisRun(ctx, stepIndexStr, step.Analysis)
+				if stepIndex > maxSuccessfulAnalysisRunStepIndex {
+					maxSuccessfulAnalysisRunStepIndex = stepIndex
+				}
+			}
+		}
+
+		ccr := cellComponentReconciler{
+			cell:          cell,
+			runtimeClient: runtimeClient,
+			scheme:        scheme,
+		}
+
+	STEPS:
+		for stepIndex, step := range canarySteps {
+			stepIndexStr := strconv.Itoa(stepIndex)
+
+			if a := canary.Analysis; a != nil {
+				// A background analysis works very much like
+				// Argo Rollouts Background Analysis as documented at
+				// https://argoproj.github.io/argo-rollouts/features/analysis/#background-analysis
+				// except that okra's works against clusters(backing e.g. AWSTargetGroups) instead of replicasets.
+
+				start := int32(0)
+				if a.StartingStep != nil {
+					start = *a.StartingStep
+				}
+
+				if int32(stepIndex) >= start {
+					r, err := ccr.reconcileAnalysisRun(ctx, "bg", &a.RolloutAnalysis)
 					if err != nil {
 						return err
-					} else if r == ComponentInProgress {
-						break STEPS
 					} else if r == ComponentFailed {
 						anyStepFailed = true
 						break STEPS
 					}
-				} else if step.Experiment != nil {
-					r, err := ccr.reconcileExperiment(ctx, stepIndexStr, step.Experiment)
-					if err != nil {
-						return err
-					} else if r == ComponentInProgress {
-						break STEPS
-					} else if r == ComponentFailed {
-						anyStepFailed = true
-						break STEPS
-					}
-				} else if step.SetWeight != nil {
-					desiredStableTGsWeight -= int(*step.SetWeight)
 
-					if desiredStableTGsWeight < currentStableTGsWeight {
-						break STEPS
-					}
-				} else if step.Pause != nil {
-					r, err := ccr.reconcilePause(ctx, stepIndexStr, step.Pause)
-					if err != nil {
-						return err
-					} else if r == ComponentInProgress {
-						break STEPS
-					} else if r == ComponentFailed {
-						anyStepFailed = true
-						break STEPS
-					}
-				} else {
-					return fmt.Errorf("steps[%d]: only setWeight, analysis, and pause step are supported. got %v", stepIndex, step)
-				}
-
-				if stepIndex+1 == len(canarySteps) {
-					passedAllCanarySteps = true
-				}
-			}
-		}
-
-		if passedAllCanarySteps || len(canarySteps) == 0 {
-			desiredStableTGsWeight = 0
-		}
-
-		if anyStepFailed {
-			desiredStableTGsWeight = 100
-		}
-
-		if desiredStableTGsWeight < 0 {
-			return fmt.Errorf("stable tgs weight cannot be less than 0: %v", desiredStableTGsWeight)
-		}
-
-		// Do update by step weight
-		var updatedTGs []okrav1alpha1.ForwardTargetGroup
-
-		numStableTGs := len(currentStableTGs)
-
-		updatedStableTGs := map[string]okrav1alpha1.ForwardTargetGroup{}
-
-		for i, tg := range currentStableTGs {
-			tg := tg
-
-			var weight int
-
-			if desiredStableTGsWeight > 0 {
-				weight = desiredStableTGsWeight / numStableTGs
-
-				if i == numStableTGs-1 && numStableTGs > 1 {
-					weight = desiredStableTGsWeight - (weight * (numStableTGs - 1))
+					// We accept both StepInProgress and StepPassed
+					// as a background analysis makes the cell degraded
+					// only if it failed.
 				}
 			}
 
-			updatedStableTGs[tg.Name] = okrav1alpha1.ForwardTargetGroup{
-				Name:   tg.Name,
-				ARN:    tg.ARN,
-				Weight: weight,
-			}
-		}
-
-		for _, tg := range updatedStableTGs {
-			updatedTGs = append(updatedTGs, tg)
-		}
-
-		desiredCanaryTGsWeight = 100 - desiredStableTGsWeight
-
-		updatedCanatyTGs := map[string]okrav1alpha1.ForwardTargetGroup{}
-
-		for i, tg := range desiredTGs {
-			var weight int
-
-			if desiredCanaryTGsWeight > 0 {
-				weight = desiredCanaryTGsWeight / numLatestTGs
-
-				if i == numLatestTGs-1 && numLatestTGs > 1 {
-					weight = desiredCanaryTGsWeight - (weight * (numLatestTGs - 1))
+			if step.Analysis != nil {
+				r, err := ccr.reconcileAnalysisRun(ctx, stepIndexStr, step.Analysis)
+				if err != nil {
+					return err
+				} else if r == ComponentInProgress {
+					break STEPS
+				} else if r == ComponentFailed {
+					anyStepFailed = true
+					break STEPS
 				}
+			} else if step.Experiment != nil {
+				r, err := ccr.reconcileExperiment(ctx, stepIndexStr, step.Experiment)
+				if err != nil {
+					return err
+				} else if r == ComponentInProgress {
+					break STEPS
+				} else if r == ComponentFailed {
+					anyStepFailed = true
+					break STEPS
+				}
+			} else if step.SetWeight != nil {
+				desiredStableTGsWeight -= int(*step.SetWeight)
+
+				if desiredStableTGsWeight < currentStableTGsWeight {
+					break STEPS
+				}
+			} else if step.Pause != nil {
+				r, err := ccr.reconcilePause(ctx, stepIndexStr, step.Pause)
+				if err != nil {
+					return err
+				} else if r == ComponentInProgress {
+					break STEPS
+				} else if r == ComponentFailed {
+					anyStepFailed = true
+					break STEPS
+				}
+			} else {
+				return fmt.Errorf("steps[%d]: only setWeight, analysis, and pause step are supported. got %v", stepIndex, step)
 			}
 
-			updatedCanatyTGs[tg.Name] = okrav1alpha1.ForwardTargetGroup{
-				Name:   tg.Name,
-				ARN:    tg.Spec.ARN,
-				Weight: weight,
+			if stepIndex+1 == len(canarySteps) {
+				passedAllCanarySteps = true
+			}
+		}
+	}
+
+	if passedAllCanarySteps || len(canarySteps) == 0 {
+		desiredStableTGsWeight = 0
+	}
+
+	if anyStepFailed {
+		desiredStableTGsWeight = 100
+	}
+
+	if desiredStableTGsWeight < 0 {
+		return fmt.Errorf("stable tgs weight cannot be less than 0: %v", desiredStableTGsWeight)
+	}
+
+	// Do update by step weight
+	var updatedTGs []okrav1alpha1.ForwardTargetGroup
+
+	numStableTGs := len(currentStableTGs)
+
+	updatedStableTGs := map[string]okrav1alpha1.ForwardTargetGroup{}
+
+	for i, tg := range currentStableTGs {
+		tg := tg
+
+		var weight int
+
+		if desiredStableTGsWeight > 0 {
+			weight = desiredStableTGsWeight / numStableTGs
+
+			if i == numStableTGs-1 && numStableTGs > 1 {
+				weight = desiredStableTGsWeight - (weight * (numStableTGs - 1))
 			}
 		}
 
-		for _, tg := range updatedCanatyTGs {
-			updatedTGs = append(updatedTGs, tg)
+		updatedStableTGs[tg.Name] = okrav1alpha1.ForwardTargetGroup{
+			Name:   tg.Name,
+			ARN:    tg.ARN,
+			Weight: weight,
+		}
+	}
+
+	for _, tg := range updatedStableTGs {
+		updatedTGs = append(updatedTGs, tg)
+	}
+
+	desiredCanaryTGsWeight = 100 - desiredStableTGsWeight
+
+	updatedCanatyTGs := map[string]okrav1alpha1.ForwardTargetGroup{}
+
+	for i, tg := range desiredTGs {
+		var weight int
+
+		if desiredCanaryTGsWeight > 0 {
+			weight = desiredCanaryTGsWeight / numLatestTGs
+
+			if i == numLatestTGs-1 && numLatestTGs > 1 {
+				weight = desiredCanaryTGsWeight - (weight * (numLatestTGs - 1))
+			}
 		}
 
-		sort.Slice(updatedTGs, func(i, j int) bool {
-			return updatedTGs[i].Name < updatedTGs[j].Name
-		})
+		updatedCanatyTGs[tg.Name] = okrav1alpha1.ForwardTargetGroup{
+			Name:   tg.Name,
+			ARN:    tg.Spec.ARN,
+			Weight: weight,
+		}
+	}
 
-		updated := make(map[string]int)
-		for _, tg := range updatedTGs {
-			updated[tg.Name] = tg.Weight
+	for _, tg := range updatedCanatyTGs {
+		updatedTGs = append(updatedTGs, tg)
+	}
+
+	sort.Slice(updatedTGs, func(i, j int) bool {
+		return updatedTGs[i].Name < updatedTGs[j].Name
+	})
+
+	updated := make(map[string]int)
+	for _, tg := range updatedTGs {
+		updated[tg.Name] = tg.Weight
+	}
+
+	albConfig.Spec.Listener.Rule.Forward.TargetGroups = updatedTGs
+
+	currentHash := albConfig.Annotations[LabelKeyTemplateHash]
+	desiredHash := sync.ComputeHash(albConfig.Spec)
+
+	if currentHash != desiredHash {
+		if currentStableTGsWeight != desiredStableTGsWeight {
+			log.Printf("Changing stable weight(%v): %d -> %d\n", currentStableTGsMaxVer, currentStableTGsWeight, desiredStableTGsWeight)
+		}
+		if currentCanaryTGsWeight != desiredCanaryTGsWeight {
+			log.Printf("Changing canary(%s) weight: %d -> %d\n", desiredVer, currentCanaryTGsWeight, desiredCanaryTGsWeight)
 		}
 
-		albConfig.Spec.Listener.Rule.Forward.TargetGroups = updatedTGs
+		metav1.SetMetaDataAnnotation(&albConfig.ObjectMeta, LabelKeyTemplateHash, desiredHash)
 
-		currentHash := albConfig.Annotations[LabelKeyTemplateHash]
-		desiredHash := sync.ComputeHash(albConfig.Spec)
-
-		if currentHash != desiredHash {
-			if currentStableTGsWeight != desiredStableTGsWeight {
-				log.Printf("Changing stable weight(%v): %d -> %d\n", currentStableTGsMaxVer, currentStableTGsWeight, desiredStableTGsWeight)
-			}
-			if currentCanaryTGsWeight != desiredCanaryTGsWeight {
-				log.Printf("Changing canary(%s) weight: %d -> %d\n", desiredVer, currentCanaryTGsWeight, desiredCanaryTGsWeight)
-			}
-
-			metav1.SetMetaDataAnnotation(&albConfig.ObjectMeta, LabelKeyTemplateHash, desiredHash)
-
-			if err := runtimeClient.Update(ctx, &albConfig); err != nil {
-				return err
-			}
-
-			log.Printf("Updated target groups and weights to: %v\n", updated)
-		} else {
-			log.Printf("No change detected on AWSApplicationLoadBalancerConfig and target group weights. Skipped updating.")
+		if err := runtimeClient.Update(ctx, &albConfig); err != nil {
+			return err
 		}
+
+		log.Printf("Updated target groups and weights to: %v\n", updated)
+	} else {
+		log.Printf("No change detected on AWSApplicationLoadBalancerConfig and target group weights. Skipped updating.")
 	}
 
 	if anyStepFailed {
@@ -597,7 +600,7 @@ func Sync(config SyncInput) error {
 
 	log.Printf("Finishing reconcilation. desiredTargetTGsWeight=%v, passedAllCanarySteps=%v, anyStepFailed=%v, desiredVerIsBlocked=%v", desiredStableTGsWeight, passedAllCanarySteps, anyStepFailed, desiredVerIsBlocked)
 
-	if desiredStableTGsWeight == 0 && passedAllCanarySteps || anyStepFailed || desiredVerIsBlocked {
+	if desiredStableTGsWeight == 0 && passedAllCanarySteps || anyStepFailed {
 		objects := []runtime.Object{
 			&rolloutsv1alpha1.AnalysisRun{},
 			&rolloutsv1alpha1.Experiment{},
