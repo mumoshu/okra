@@ -224,7 +224,7 @@ func (s cellComponentReconciler) reconcileExperiment(ctx context.Context, compon
 		ex = rolloutsv1alpha1.Experiment{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: cell.Namespace,
-				Name:      fmt.Sprintf("%s-%d-%s", cell.Name, componentID, "experiment"),
+				Name:      fmt.Sprintf("%s-%s-%s", cell.Name, componentID, "experiment"),
 				Labels: map[string]string{
 					LabelKeyStepIndex:    componentID,
 					LabelKeyCell:         cell.Name,
