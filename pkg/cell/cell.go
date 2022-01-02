@@ -238,16 +238,11 @@ func Sync(config SyncInput) error {
 	}
 
 	var (
-		desiredAndCanaryAreSameVersion bool
-		rollbackRequested              bool
+		rollbackRequested bool
 	)
 
-	for _, tg := range currentCanaryTGs {
+	for _, tg := range currentStableTGs {
 		ver := allKnownTGsNameToVer[tg.Name]
-		if ver == desiredVer.String() {
-			desiredAndCanaryAreSameVersion = true
-			break
-		}
 
 		currentVer, err := semver.Parse(ver)
 		if err != nil {
@@ -285,11 +280,9 @@ func Sync(config SyncInput) error {
 	// Do update immediately without analysis or step update when
 	// it seems to have been triggered by an additional cluster that might have been
 	// added to deal with more load.
-	scaleRequested := desiredAndCanaryAreSameVersion && len(desiredTGsByName) != len(currentCanaryTGs)
+	scaleRequested := len(currentCanaryTGs) > 0 && len(desiredTGsByName) != len(currentCanaryTGs) && currentCanaryTGsWeight == 100
 
-	noStable := len(currentStableTGs) == 0
-
-	if rollbackRequested || scaleRequested || noStable {
+	if rollbackRequested || scaleRequested {
 		// Immediately update LB config as quickly as possible when
 		// either a rollback or a scale in/out is requested.
 
