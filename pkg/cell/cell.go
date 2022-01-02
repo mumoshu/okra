@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
 	"strconv"
 	"time"
 
@@ -593,17 +594,30 @@ func Sync(config SyncInput) error {
 			updatedTGs = append(updatedTGs, tg)
 		}
 
+		sort.Slice(updatedTGs, func(i, j int) bool {
+			return updatedTGs[i].Name < updatedTGs[j].Name
+		})
+
 		updated := make(map[string]int)
 		for _, tg := range updatedTGs {
 			updated[tg.Name] = tg.Weight
 		}
 
-		log.Printf("updating target groups and weights to: %v\n", updated)
-
 		albConfig.Spec.Listener.Rule.Forward.TargetGroups = updatedTGs
 
-		if err := runtimeClient.Update(ctx, &albConfig); err != nil {
-			return err
+		currentHash := albConfig.Annotations[LabelKeyTemplateHash]
+		desiredHash := sync.ComputeHash(albConfig.Spec)
+
+		if currentHash != desiredHash {
+			metav1.SetMetaDataAnnotation(&albConfig.ObjectMeta, LabelKeyTemplateHash, desiredHash)
+
+			if err := runtimeClient.Update(ctx, &albConfig); err != nil {
+				return err
+			}
+
+			log.Printf("Updated target groups and weights to: %v\n", updated)
+		} else {
+			log.Printf("Skipped updating target groups")
 		}
 	}
 
