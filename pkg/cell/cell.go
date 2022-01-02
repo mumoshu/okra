@@ -67,6 +67,8 @@ func Sync(config SyncInput) error {
 		}
 	}
 
+	key := types.NamespacedName{Namespace: cell.Namespace, Name: cell.Name}
+
 	albListenerARN := cell.Spec.Ingress.AWSApplicationLoadBalancer.ListenerARN
 	tgSelectorMatchLabels := cell.Spec.Ingress.AWSApplicationLoadBalancer.TargetGroupSelector
 	tgSelector := labels.SelectorFromSet(tgSelectorMatchLabels.MatchLabels)
@@ -75,7 +77,7 @@ func Sync(config SyncInput) error {
 	var albConfigExists bool
 	var desiredALBConfigSpec okrav1alpha1.AWSApplicationLoadBalancerConfigSpec
 
-	if err := runtimeClient.Get(ctx, types.NamespacedName{Namespace: cell.Namespace, Name: cell.Name}, &albConfig); err != nil {
+	if err := runtimeClient.Get(ctx, key, &albConfig); err != nil {
 		log.Printf("%v\n", err)
 		if !kerrors.IsNotFound(err) {
 			return err
@@ -154,7 +156,7 @@ func Sync(config SyncInput) error {
 		threshold = int(*cell.Spec.Replicas)
 	}
 
-	log.Printf("cell=%s/%s, albConfigExists=%v, tgSelector=%s, len(latestTGs)=%d\n", cell.Namespace, cell.Name, albConfigExists, tgSelector.String(), len(latestTGs))
+	log.Printf("key=%s, albConfigExists=%v, tgSelector=%s, len(latestTGs)=%d\n", key, albConfigExists, tgSelector.String(), len(latestTGs))
 
 	if numLatestTGs != threshold {
 		return nil
