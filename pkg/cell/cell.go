@@ -219,8 +219,9 @@ func Sync(config SyncInput) error {
 	var currentStableTGsWeight, currentCanaryTGsWeight, desiredCanaryTGsWeight int
 
 	var (
-		currentStableTGs []okrav1alpha1.ForwardTargetGroup
-		currentCanaryTGs []okrav1alpha1.ForwardTargetGroup
+		currentStableTGs  []okrav1alpha1.ForwardTargetGroup
+		currentCanaryTGs  []okrav1alpha1.ForwardTargetGroup
+		rollbackRequested bool
 	)
 
 	for _, tg := range albConfig.Spec.Listener.Rule.Forward.TargetGroups {
@@ -235,13 +236,8 @@ func Sync(config SyncInput) error {
 		currentStableTGs = append(currentStableTGs, tg)
 
 		currentStableTGsWeight += tg.Weight
-	}
 
-	var (
-		rollbackRequested bool
-	)
-
-	for _, tg := range currentStableTGs {
+		// check if rollback is requested
 		ver := allKnownTGsNameToVer[tg.Name]
 
 		currentVer, err := semver.Parse(ver)
@@ -505,17 +501,6 @@ func Sync(config SyncInput) error {
 
 		desiredCanaryTGsWeight = 100 - desiredStableTGsWeight
 
-		var canaryVersion string
-		for _, tg := range desiredTGs {
-			for _, l := range labelKeys {
-				v, ok := tg.Labels[l]
-				if ok {
-					canaryVersion = v
-					break
-				}
-			}
-		}
-
 		updatedCanatyTGs := map[string]okrav1alpha1.ForwardTargetGroup{}
 
 		for i, tg := range desiredTGs {
@@ -559,7 +544,7 @@ func Sync(config SyncInput) error {
 				log.Printf("Changing stable weight(%v): %d -> %d\n", currentStableTGsMaxVer, currentStableTGsWeight, desiredStableTGsWeight)
 			}
 			if currentCanaryTGsWeight != desiredCanaryTGsWeight {
-				log.Printf("Changing canary(%s) weight: %d -> %d\n", canaryVersion, currentCanaryTGsWeight, desiredCanaryTGsWeight)
+				log.Printf("Changing canary(%s) weight: %d -> %d\n", desiredVer, currentCanaryTGsWeight, desiredCanaryTGsWeight)
 			}
 
 			metav1.SetMetaDataAnnotation(&albConfig.ObjectMeta, LabelKeyTemplateHash, desiredHash)
