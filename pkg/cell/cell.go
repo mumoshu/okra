@@ -146,8 +146,6 @@ func Sync(config SyncInput) error {
 		}
 	}
 
-	desiredTGsByName := map[string]okrav1alpha1.ForwardTargetGroup{}
-
 	numLatestTGs := len(desiredTGs)
 
 	// Ensure there enough cluster replicas to start a canary release
@@ -163,19 +161,7 @@ func Sync(config SyncInput) error {
 	}
 
 	// Do distribute weights evently so that the total becomes 100
-	for i, tg := range desiredTGs {
-		weight := 100 / numLatestTGs
-
-		if i == numLatestTGs-1 && numLatestTGs > 1 {
-			weight = 100 - (weight * (numLatestTGs - 1))
-		}
-
-		desiredTGsByName[tg.Name] = okrav1alpha1.ForwardTargetGroup{
-			Name:   tg.Name,
-			ARN:    tg.Spec.ARN,
-			Weight: weight,
-		}
-	}
+	desiredTGsByName := distributeWeights(100, desiredTGs)
 
 	if !albConfigExists {
 		// ALB isn't initialized yet so we are creating the ALBConfig resource for the first time
@@ -219,12 +205,18 @@ func Sync(config SyncInput) error {
 	var currentStableTGsWeight, currentCanaryTGsWeight, desiredCanaryTGsWeight int
 
 	var (
-		currentStableTGs  []okrav1alpha1.ForwardTargetGroup
 		currentCanaryTGs  []okrav1alpha1.ForwardTargetGroup
+		currentStableTGs  []okrav1alpha1.ForwardTargetGroup
 		rollbackRequested bool
+
+		currentStableTGsMaxVer *semver.Version
+		currentStableTGsByVer  = map[string][]okrav1alpha1.ForwardTargetGroup{}
 	)
 
 	for _, tg := range albConfig.Spec.Listener.Rule.Forward.TargetGroups {
+		// Divide target groups already registered to our ALB config
+		// between canary and stable versions, which are necessary for a gradual update.
+
 		tg := tg
 
 		if _, ok := desiredTGsByName[tg.Name]; ok {
@@ -237,7 +229,7 @@ func Sync(config SyncInput) error {
 
 		currentStableTGsWeight += tg.Weight
 
-		// check if rollback is requested
+		// Check if rollback is requested
 		ver := allKnownTGsNameToVer[tg.Name]
 
 		currentVer, err := semver.Parse(ver)
@@ -249,19 +241,9 @@ func Sync(config SyncInput) error {
 		if desiredVer.LT(currentVer) {
 			rollbackRequested = true
 		}
-	}
 
-	var currentStableTGsMaxVer *semver.Version
-	currentStableTGsByVer := map[string][]okrav1alpha1.ForwardTargetGroup{}
-	for _, tg := range currentStableTGs {
-		ver := allKnownTGsNameToVer[tg.Name]
-
-		currentVer, err := semver.Parse(ver)
-		if err != nil {
-			log.Printf("Skipped incorrect label value %s: %v", ver, err)
-			continue
-		}
-
+		// Make sure there's only one stable version by
+		// stripping out all the older stable versions
 		if currentStableTGsMaxVer == nil || currentStableTGsMaxVer.LT(currentVer) {
 			currentStableTGsMaxVer = &currentVer
 		}
@@ -364,8 +346,7 @@ func Sync(config SyncInput) error {
 			if ar.Status.Phase.Completed() {
 				stepIndexStr, ok := ar.Labels[LabelKeyStepIndex]
 				if !ok {
-					log.Printf("AnalysisRun %q does not have as step-index label. Perhaps this is not the one managed by okra? Skipping.", ar.Name)
-					continue
+					return fmt.Errorf("AnalysisRun %q does not have as step-index label. Perhaps this is not the one managed by okra?", ar.Name)
 				}
 				stepIndex, err := strconv.Atoi(stepIndexStr)
 				if err != nil {
@@ -475,29 +456,7 @@ func Sync(config SyncInput) error {
 	// Do update by step weight
 	var updatedTGs []okrav1alpha1.ForwardTargetGroup
 
-	numStableTGs := len(currentStableTGs)
-
-	updatedStableTGs := map[string]okrav1alpha1.ForwardTargetGroup{}
-
-	for i, tg := range currentStableTGs {
-		tg := tg
-
-		var weight int
-
-		if desiredStableTGsWeight > 0 {
-			weight = desiredStableTGsWeight / numStableTGs
-
-			if i == numStableTGs-1 && numStableTGs > 1 {
-				weight = desiredStableTGsWeight - (weight * (numStableTGs - 1))
-			}
-		}
-
-		updatedStableTGs[tg.Name] = okrav1alpha1.ForwardTargetGroup{
-			Name:   tg.Name,
-			ARN:    tg.ARN,
-			Weight: weight,
-		}
-	}
+	updatedStableTGs := redistributeWeights(desiredStableTGsWeight, currentStableTGs)
 
 	for _, tg := range updatedStableTGs {
 		updatedTGs = append(updatedTGs, tg)
@@ -505,38 +464,15 @@ func Sync(config SyncInput) error {
 
 	desiredCanaryTGsWeight = 100 - desiredStableTGsWeight
 
-	updatedCanatyTGs := map[string]okrav1alpha1.ForwardTargetGroup{}
+	updatedCanaryTGsByName := distributeWeights(desiredCanaryTGsWeight, desiredTGs)
 
-	for i, tg := range desiredTGs {
-		var weight int
-
-		if desiredCanaryTGsWeight > 0 {
-			weight = desiredCanaryTGsWeight / numLatestTGs
-
-			if i == numLatestTGs-1 && numLatestTGs > 1 {
-				weight = desiredCanaryTGsWeight - (weight * (numLatestTGs - 1))
-			}
-		}
-
-		updatedCanatyTGs[tg.Name] = okrav1alpha1.ForwardTargetGroup{
-			Name:   tg.Name,
-			ARN:    tg.Spec.ARN,
-			Weight: weight,
-		}
-	}
-
-	for _, tg := range updatedCanatyTGs {
+	for _, tg := range updatedCanaryTGsByName {
 		updatedTGs = append(updatedTGs, tg)
 	}
 
 	sort.Slice(updatedTGs, func(i, j int) bool {
 		return updatedTGs[i].Name < updatedTGs[j].Name
 	})
-
-	updated := make(map[string]int)
-	for _, tg := range updatedTGs {
-		updated[tg.Name] = tg.Weight
-	}
 
 	albConfig.Spec.Listener.Rule.Forward.TargetGroups = updatedTGs
 
@@ -555,6 +491,11 @@ func Sync(config SyncInput) error {
 
 		if err := runtimeClient.Update(ctx, &albConfig); err != nil {
 			return err
+		}
+
+		updated := make(map[string]int)
+		for _, tg := range updatedTGs {
+			updated[tg.Name] = tg.Weight
 		}
 
 		log.Printf("Updated target groups and weights to: %v\n", updated)
