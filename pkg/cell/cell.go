@@ -305,8 +305,6 @@ func Sync(config SyncInput) error {
 		return err
 	}
 
-	desiredStableTGsWeight := 100
-
 	var bl okrav1alpha1.VersionBlocklist
 
 	if err := runtimeClient.Get(ctx, key, &bl); err != nil {
@@ -331,6 +329,8 @@ func Sync(config SyncInput) error {
 	canarySteps := canary.Steps
 
 	passedAllCanarySteps = currentCanaryTGsWeight == 100
+
+	desiredStableTGsWeight := 100
 
 	if len(canarySteps) > 0 && !passedAllCanarySteps {
 		var analysisRunList rolloutsv1alpha1.AnalysisRunList
@@ -395,44 +395,32 @@ func Sync(config SyncInput) error {
 				}
 			}
 
+			var (
+				r   componentReconcilationResult
+				err error
+			)
+
 			if step.Analysis != nil {
-				r, err := ccr.reconcileAnalysisRun(ctx, stepIndexStr, step.Analysis)
-				if err != nil {
-					return err
-				} else if r == ComponentInProgress {
-					break STEPS
-				} else if r == ComponentFailed {
-					anyStepFailed = true
-					break STEPS
-				}
+				r, err = ccr.reconcileAnalysisRun(ctx, stepIndexStr, step.Analysis)
 			} else if step.Experiment != nil {
-				r, err := ccr.reconcileExperiment(ctx, stepIndexStr, step.Experiment)
-				if err != nil {
-					return err
-				} else if r == ComponentInProgress {
-					break STEPS
-				} else if r == ComponentFailed {
-					anyStepFailed = true
-					break STEPS
-				}
+				r, err = ccr.reconcileExperiment(ctx, stepIndexStr, step.Experiment)
 			} else if step.SetWeight != nil {
 				desiredStableTGsWeight -= int(*step.SetWeight)
 
-				if desiredStableTGsWeight < currentStableTGsWeight {
-					break STEPS
-				}
+				r = ComponentPassed
 			} else if step.Pause != nil {
-				r, err := ccr.reconcilePause(ctx, stepIndexStr, step.Pause)
-				if err != nil {
-					return err
-				} else if r == ComponentInProgress {
-					break STEPS
-				} else if r == ComponentFailed {
-					anyStepFailed = true
-					break STEPS
-				}
+				r, err = ccr.reconcilePause(ctx, stepIndexStr, step.Pause)
 			} else {
 				return fmt.Errorf("steps[%d]: only setWeight, analysis, and pause step are supported. got %v", stepIndex, step)
+			}
+
+			if err != nil {
+				return err
+			} else if r == ComponentInProgress {
+				break STEPS
+			} else if r == ComponentFailed {
+				anyStepFailed = true
+				break STEPS
 			}
 
 			if stepIndex+1 == len(canarySteps) {
