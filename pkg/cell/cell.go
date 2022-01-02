@@ -23,9 +23,10 @@ import (
 )
 
 const (
-	LabelKeyStepIndex    = "okra.mumo.co/step-index"
-	LabelKeyTemplateHash = "okra.mumo.co/template-hash"
-	LabelKeyCell         = "cell"
+	LabelKeyStepIndex     = "okra.mumo.co/step-index"
+	LabelKeyTemplateHash  = "okra.mumo.co/template-hash"
+	LabelKeyCellStateHash = "okra.mumo.co/cell-state-hash"
+	LabelKeyCell          = "cell"
 )
 
 type Provider struct {
@@ -159,6 +160,13 @@ func Sync(config SyncInput) error {
 	if numLatestTGs != threshold {
 		return nil
 	}
+
+	sort.Slice(desiredTGs, func(i, j int) bool {
+		return desiredTGs[i].Name < desiredTGs[j].Name
+	})
+
+	// We use this to clean up outdated analysisruns, experiments, and pauses
+	cellStateHash := sync.ComputeHash(desiredTGs)
 
 	// Do distribute weights evently so that the total becomes 100
 	desiredTGsByName := distributeWeights(100, desiredTGs)
@@ -363,6 +371,33 @@ func Sync(config SyncInput) error {
 			cell:          cell,
 			runtimeClient: runtimeClient,
 			scheme:        scheme,
+			cellStateHash: cellStateHash,
+		}
+
+		objects := []runtime.Object{
+			&rolloutsv1alpha1.AnalysisRun{},
+			&rolloutsv1alpha1.Experiment{},
+			&okrav1alpha1.Pause{},
+		}
+
+		outdatedComponents, err := ccr.outdatedComponentSelectorLabels()
+		if err != nil {
+			return err
+		}
+
+		for _, o := range objects {
+			// Seems like we need to explicitly specify the namespace with client.InNamespace.
+			// Otherwise it results in `Error: the server could not find the requested resource (delete analysisruns.argoproj.io)`
+			if err := runtimeClient.DeleteAllOf(ctx, o, client.InNamespace(cell.Namespace), &client.DeleteAllOfOptions{
+				ListOptions: client.ListOptions{
+					LabelSelector: outdatedComponents,
+				},
+			}); err != nil {
+				log.Printf("Failed deleting %Ts: %v", o, err)
+				return err
+			}
+
+			log.Printf("Deleted all %Ts with %s, if any", o, outdatedComponents)
 		}
 
 	STEPS:
@@ -528,29 +563,6 @@ func Sync(config SyncInput) error {
 	}
 
 	log.Printf("Finishing reconcilation. desiredTargetTGsWeight=%v, passedAllCanarySteps=%v, anyStepFailed=%v, desiredVerIsBlocked=%v", desiredStableTGsWeight, passedAllCanarySteps, anyStepFailed, desiredVerIsBlocked)
-
-	if desiredStableTGsWeight == 0 && passedAllCanarySteps || anyStepFailed {
-		objects := []runtime.Object{
-			&rolloutsv1alpha1.AnalysisRun{},
-			&rolloutsv1alpha1.Experiment{},
-			&okrav1alpha1.Pause{},
-		}
-
-		for _, o := range objects {
-			// Seems like we need to explicitly specify the namespace with client.InNamespace.
-			// Otherwise it results in `Error: the server could not find the requested resource (delete analysisruns.argoproj.io)`
-			if err := runtimeClient.DeleteAllOf(ctx, o, client.InNamespace(cell.Namespace), &client.DeleteAllOfOptions{
-				ListOptions: client.ListOptions{
-					LabelSelector: everythingOwnedByThisCell,
-				},
-			}); err != nil {
-				log.Printf("Failed deleting %Ts: %v", o, err)
-				return err
-			}
-
-			log.Printf("Deleted all %Ts with %s, if any", o, everythingOwnedByThisCell)
-		}
-	}
 
 	return nil
 }

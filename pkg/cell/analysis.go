@@ -23,6 +23,7 @@ type cellComponentReconciler struct {
 	cell          okrav1alpha1.Cell
 	runtimeClient client.Client
 	scheme        *runtime.Scheme
+	cellStateHash string
 }
 
 type componentReconcilationResult int
@@ -32,6 +33,24 @@ const (
 	ComponentPassed
 	ComponentFailed
 )
+
+func (s cellComponentReconciler) componentSelectorLabels(componentID string) map[string]string {
+	return map[string]string{
+		LabelKeyStepIndex:     componentID,
+		LabelKeyCell:          s.cell.Name,
+		LabelKeyCellStateHash: s.cellStateHash,
+	}
+}
+
+func (s cellComponentReconciler) outdatedComponentSelectorLabels() (labels.Selector, error) {
+	return labels.Parse(LabelKeyCell + "=" + s.cell.Name + "," + LabelKeyCellStateHash + "!=" + s.cellStateHash)
+}
+
+func (s cellComponentReconciler) componentLabels(componentID, templateHash string) map[string]string {
+	r := s.componentSelectorLabels(componentID)
+	r[LabelKeyTemplateHash] = templateHash
+	return r
+}
 
 func (s cellComponentReconciler) reconcileAnalysisRun(ctx context.Context, componentID string, analysis *rolloutsv1alpha1.RolloutAnalysis) (componentReconcilationResult, error) {
 	cell := s.cell
@@ -97,19 +116,20 @@ func (s cellComponentReconciler) reconcileAnalysisRun(ctx context.Context, compo
 			args = append(args, a)
 		}
 
+		spec := rolloutsv1alpha1.AnalysisRunSpec{
+			Args:    args,
+			Metrics: at.Spec.Metrics,
+		}
+
+		templateHash := sync.ComputeHash(spec)
+
 		ar := rolloutsv1alpha1.AnalysisRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: cell.Namespace,
 				Name:      fmt.Sprintf("%s-%s-%s", cell.Name, componentID, tmpl.TemplateName),
-				Labels: map[string]string{
-					LabelKeyStepIndex: componentID,
-					LabelKeyCell:      cell.Name,
-				},
+				Labels:    s.componentLabels(componentID, templateHash),
 			},
-			Spec: rolloutsv1alpha1.AnalysisRunSpec{
-				Args:    args,
-				Metrics: at.Spec.Metrics,
-			},
+			Spec: spec,
 		}
 		if err := ctrl.SetControllerReference(&cell, &ar, scheme); err != nil {
 			log.Printf("Failed setting controller reference on %s/%s: %v", ar.Namespace, ar.Name, err)
@@ -226,11 +246,7 @@ func (s cellComponentReconciler) reconcileExperiment(ctx context.Context, compon
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: cell.Namespace,
 				Name:      fmt.Sprintf("%s-%s-%s", cell.Name, componentID, "experiment"),
-				Labels: map[string]string{
-					LabelKeyStepIndex:    componentID,
-					LabelKeyCell:         cell.Name,
-					LabelKeyTemplateHash: templateHash,
-				},
+				Labels:    s.componentLabels(componentID, templateHash),
 			},
 			Spec: spec,
 		}
@@ -319,12 +335,13 @@ func (s cellComponentReconciler) reconcilePause(ctx context.Context, componentID
 	runtimeClient := s.runtimeClient
 	scheme := s.scheme
 
-	ns := cell.Namespace
-
-	labels := map[string]string{
-		LabelKeyStepIndex: componentID,
-		LabelKeyCell:      cell.Name,
+	t := metav1.Time{
+		Time: time.Now().Add(time.Duration(time.Second.Nanoseconds() * int64(pauseTemplate.DurationSeconds()))),
 	}
+
+	labels := s.componentSelectorLabels(componentID)
+
+	ns := cell.Namespace
 
 	if err := runtimeClient.List(ctx, &pauseList, client.InNamespace(ns), client.MatchingLabels(labels)); err != nil {
 		return ComponentInProgress, err
@@ -332,19 +349,19 @@ func (s cellComponentReconciler) reconcilePause(ctx context.Context, componentID
 
 	switch c := len(pauseList.Items); c {
 	case 0:
-		t := metav1.Time{
-			Time: time.Now().Add(time.Duration(time.Second.Nanoseconds() * int64(pauseTemplate.DurationSeconds()))),
+		spec := okrav1alpha1.PauseSpec{
+			ExpireTime: t,
 		}
+
+		templateHash := sync.ComputeHash(spec)
 
 		pause := okrav1alpha1.Pause{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: ns,
 				Name:      fmt.Sprintf("%s-%s-%s", cell.Name, componentID, "pause"),
-				Labels:    labels,
+				Labels:    s.componentLabels(componentID, templateHash),
 			},
-			Spec: okrav1alpha1.PauseSpec{
-				ExpireTime: t,
-			},
+			Spec: spec,
 		}
 		ctrl.SetControllerReference(&cell, &pause, scheme)
 
