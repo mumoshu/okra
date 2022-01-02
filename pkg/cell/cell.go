@@ -666,6 +666,17 @@ func Sync(config SyncInput) error {
 
 		log.Printf("Deleted all analysis runs with %s, if any", ownedByCellLabelSelector)
 
+		if err := runtimeClient.DeleteAllOf(ctx, &rolloutsv1alpha1.Experiment{}, client.InNamespace(cell.Namespace), &client.DeleteAllOfOptions{
+			ListOptions: client.ListOptions{
+				LabelSelector: ownedByCellLabelSelector,
+			},
+		}); err != nil {
+			log.Printf("Failed deleting experiments: %v", err)
+			return err
+		}
+
+		log.Printf("Deleted all experiments with %s, if any", ownedByCellLabelSelector)
+
 		if err := runtimeClient.DeleteAllOf(ctx, &okrav1alpha1.Pause{}, client.InNamespace(cell.Namespace), &client.DeleteAllOfOptions{
 			ListOptions: client.ListOptions{
 				LabelSelector: ownedByCellLabelSelector,
