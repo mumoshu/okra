@@ -106,7 +106,7 @@ func Sync(config SyncInput) error {
 
 	v := cell.Spec.Version
 
-	desiredVer, latestTGs, err := awstargetgroupset.ListLatestAWSTargetGroups(awstargetgroupset.ListLatestAWSTargetGroupsInput{
+	desiredVer, desiredTGs, err := awstargetgroupset.ListLatestAWSTargetGroups(awstargetgroupset.ListLatestAWSTargetGroupsInput{
 		ListAWSTargetGroupsInput: awstargetgroupset.ListAWSTargetGroupsInput{
 			NS:       cell.Namespace,
 			Selector: tgSelector.String(),
@@ -122,7 +122,7 @@ func Sync(config SyncInput) error {
 		log.Printf("Using cell.Spec.Version(%s) instead of latest version", v)
 	}
 
-	currentTGs, err := awstargetgroupset.ListAWSTargetGroups(awstargetgroupset.ListAWSTargetGroupsInput{
+	allKnownTGs, err := awstargetgroupset.ListAWSTargetGroups(awstargetgroupset.ListAWSTargetGroupsInput{
 		NS:       cell.Namespace,
 		Selector: tgSelector.String(),
 	})
@@ -130,8 +130,8 @@ func Sync(config SyncInput) error {
 		return err
 	}
 
-	currentTGNameToVer := make(map[string]string)
-	for _, tg := range currentTGs {
+	allKnownTGsNameToVer := make(map[string]string)
+	for _, tg := range allKnownTGs {
 		var ver string
 		for _, l := range labelKeys {
 			v, ok := tg.Labels[l]
@@ -142,13 +142,13 @@ func Sync(config SyncInput) error {
 		}
 
 		if ver != "" {
-			currentTGNameToVer[tg.Name] = ver
+			allKnownTGsNameToVer[tg.Name] = ver
 		}
 	}
 
-	desiredTGs := map[string]okrav1alpha1.ForwardTargetGroup{}
+	desiredTGsByName := map[string]okrav1alpha1.ForwardTargetGroup{}
 
-	numLatestTGs := len(latestTGs)
+	numLatestTGs := len(desiredTGs)
 
 	// Ensure there enough cluster replicas to start a canary release
 	threshold := 1
@@ -156,21 +156,21 @@ func Sync(config SyncInput) error {
 		threshold = int(*cell.Spec.Replicas)
 	}
 
-	log.Printf("key=%s, albConfigExists=%v, tgSelector=%s, len(latestTGs)=%d\n", key, albConfigExists, tgSelector.String(), len(latestTGs))
+	log.Printf("key=%s, albConfigExists=%v, tgSelector=%s, len(latestTGs)=%d\n", key, albConfigExists, tgSelector.String(), len(desiredTGs))
 
 	if numLatestTGs != threshold {
 		return nil
 	}
 
 	// Do distribute weights evently so that the total becomes 100
-	for i, tg := range latestTGs {
+	for i, tg := range desiredTGs {
 		weight := 100 / numLatestTGs
 
 		if i == numLatestTGs-1 && numLatestTGs > 1 {
 			weight = 100 - (weight * (numLatestTGs - 1))
 		}
 
-		desiredTGs[tg.Name] = okrav1alpha1.ForwardTargetGroup{
+		desiredTGsByName[tg.Name] = okrav1alpha1.ForwardTargetGroup{
 			Name:   tg.Name,
 			ARN:    tg.Spec.ARN,
 			Weight: weight,
@@ -179,7 +179,7 @@ func Sync(config SyncInput) error {
 
 	if !albConfigExists {
 		// ALB isn't initialized yet so we are creating the ALBConfig resource for the first time
-		for _, tg := range desiredTGs {
+		for _, tg := range desiredTGsByName {
 			albConfig.Spec.Listener.Rule.Forward.TargetGroups = append(albConfig.Spec.Listener.Rule.Forward.TargetGroups, tg)
 		}
 
@@ -190,7 +190,7 @@ func Sync(config SyncInput) error {
 		}
 
 		updated := make(map[string]int)
-		for _, tg := range desiredTGs {
+		for _, tg := range desiredTGsByName {
 			updated[tg.Name] = tg.Weight
 		}
 
@@ -219,20 +219,20 @@ func Sync(config SyncInput) error {
 	var currentStableTGsWeight, currentCanaryTGsWeight, canaryTGsWeight int
 
 	var (
-		stableTGs []okrav1alpha1.ForwardTargetGroup
-		canaryTGs []okrav1alpha1.ForwardTargetGroup
+		currentStableTGs []okrav1alpha1.ForwardTargetGroup
+		currentCanaryTGs []okrav1alpha1.ForwardTargetGroup
 	)
 
 	for _, tg := range albConfig.Spec.Listener.Rule.Forward.TargetGroups {
 		tg := tg
 
-		if _, ok := desiredTGs[tg.Name]; ok {
+		if _, ok := desiredTGsByName[tg.Name]; ok {
 			currentCanaryTGsWeight += tg.Weight
-			canaryTGs = append(canaryTGs, tg)
+			currentCanaryTGs = append(currentCanaryTGs, tg)
 			continue
 		}
 
-		stableTGs = append(stableTGs, tg)
+		currentStableTGs = append(currentStableTGs, tg)
 
 		currentStableTGsWeight += tg.Weight
 	}
@@ -242,30 +242,12 @@ func Sync(config SyncInput) error {
 		rollbackRequested              bool
 	)
 
-	if len(canaryTGs) > 0 {
-		for _, tg := range canaryTGs {
-			ver := currentTGNameToVer[tg.Name]
-			if ver == desiredVer.String() {
-				desiredAndCanaryAreSameVersion = true
-				break
-			}
-
-			currentVer, err := semver.Parse(ver)
-			if err != nil {
-				log.Printf("Skipped incorrect label value %s: %v", ver, err)
-				continue
-			}
-
-			if desiredVer.LT(currentVer) {
-				rollbackRequested = true
-			}
+	for _, tg := range currentCanaryTGs {
+		ver := allKnownTGsNameToVer[tg.Name]
+		if ver == desiredVer.String() {
+			desiredAndCanaryAreSameVersion = true
+			break
 		}
-	}
-
-	var maxStableVer *semver.Version
-	stableTGsByVer := map[string][]okrav1alpha1.ForwardTargetGroup{}
-	for _, tg := range stableTGs {
-		ver := currentTGNameToVer[tg.Name]
 
 		currentVer, err := semver.Parse(ver)
 		if err != nil {
@@ -273,33 +255,49 @@ func Sync(config SyncInput) error {
 			continue
 		}
 
-		if maxStableVer == nil || maxStableVer.LT(currentVer) {
-			maxStableVer = &currentVer
+		if desiredVer.LT(currentVer) {
+			rollbackRequested = true
 		}
-
-		stableTGsByVer[currentVer.String()] = append(stableTGsByVer[currentVer.String()], tg)
 	}
 
-	if maxStableVer != nil {
-		stableTGs = stableTGsByVer[maxStableVer.String()]
+	var currentStableTGsMaxVer *semver.Version
+	currentStableTGsByVer := map[string][]okrav1alpha1.ForwardTargetGroup{}
+	for _, tg := range currentStableTGs {
+		ver := allKnownTGsNameToVer[tg.Name]
+
+		currentVer, err := semver.Parse(ver)
+		if err != nil {
+			log.Printf("Skipped incorrect label value %s: %v", ver, err)
+			continue
+		}
+
+		if currentStableTGsMaxVer == nil || currentStableTGsMaxVer.LT(currentVer) {
+			currentStableTGsMaxVer = &currentVer
+		}
+
+		currentStableTGsByVer[currentVer.String()] = append(currentStableTGsByVer[currentVer.String()], tg)
+	}
+
+	if currentStableTGsMaxVer != nil {
+		currentStableTGs = currentStableTGsByVer[currentStableTGsMaxVer.String()]
 	}
 
 	// Do update immediately without analysis or step update when
 	// it seems to have been triggered by an additional cluster that might have been
 	// added to deal with more load.
-	scaleRequested := desiredAndCanaryAreSameVersion && len(desiredTGs) != len(canaryTGs)
+	scaleRequested := desiredAndCanaryAreSameVersion && len(desiredTGsByName) != len(currentCanaryTGs)
 
-	noStable := len(stableTGs) == 0
+	noStable := len(currentStableTGs) == 0
 
 	if rollbackRequested || scaleRequested || noStable {
 		// Immediately update LB config as quickly as possible when
 		// either a rollback or a scale in/out is requested.
 
 		albConfig.Spec.Listener.Rule.Forward.TargetGroups = nil
-		for _, tg := range desiredTGs {
+		for _, tg := range desiredTGsByName {
 			albConfig.Spec.Listener.Rule.Forward.TargetGroups = append(albConfig.Spec.Listener.Rule.Forward.TargetGroups, tg)
 		}
-		for _, tg := range stableTGs {
+		for _, tg := range currentStableTGs {
 			tg.Weight = 0
 			albConfig.Spec.Listener.Rule.Forward.TargetGroups = append(albConfig.Spec.Listener.Rule.Forward.TargetGroups, tg)
 		}
@@ -309,7 +307,7 @@ func Sync(config SyncInput) error {
 		}
 
 		updated := make(map[string]int)
-		for _, tg := range desiredTGs {
+		for _, tg := range desiredTGsByName {
 			updated[tg.Name] = tg.Weight
 		}
 
@@ -317,7 +315,7 @@ func Sync(config SyncInput) error {
 
 		if rollbackRequested {
 			log.Printf("Finished rollback")
-		} else if scaleRequested {
+		} else {
 			log.Printf("Finished scaling")
 		}
 
@@ -331,7 +329,7 @@ func Sync(config SyncInput) error {
 	)
 
 	// TODO Use client.MatchingLabels?
-	ownedByCellLabelSelector, err := labels.Parse(LabelKeyCell + "=" + cell.Name)
+	everythingOwnedByThisCell, err := labels.Parse(LabelKeyCell + "=" + cell.Name)
 	if err != nil {
 		return err
 	}
@@ -340,7 +338,7 @@ func Sync(config SyncInput) error {
 
 	var bl okrav1alpha1.VersionBlocklist
 
-	if err := runtimeClient.Get(ctx, types.NamespacedName{Namespace: cell.Namespace, Name: cell.Name}, &bl); err != nil {
+	if err := runtimeClient.Get(ctx, key, &bl); err != nil {
 		if !kerrors.IsNotFound(err) {
 			return err
 		}
@@ -363,7 +361,7 @@ func Sync(config SyncInput) error {
 			var analysisRunList rolloutsv1alpha1.AnalysisRunList
 
 			if err := runtimeClient.List(ctx, &analysisRunList, &client.ListOptions{
-				LabelSelector: ownedByCellLabelSelector,
+				LabelSelector: everythingOwnedByThisCell,
 			}); err != nil {
 				return err
 			}
@@ -531,16 +529,16 @@ func Sync(config SyncInput) error {
 			return fmt.Errorf("stable tgs weight cannot be less than 0: %v", desiredStableTGsWeight)
 		}
 
-		log.Printf("stable weight(%v): %d -> %d\n", maxStableVer, currentStableTGsWeight, desiredStableTGsWeight)
+		log.Printf("stable weight(%v): %d -> %d\n", currentStableTGsMaxVer, currentStableTGsWeight, desiredStableTGsWeight)
 
 		// Do update by step weight
 		var updatedTGs []okrav1alpha1.ForwardTargetGroup
 
-		numStableTGs := len(stableTGs)
+		numStableTGs := len(currentStableTGs)
 
 		updatedStableTGs := map[string]okrav1alpha1.ForwardTargetGroup{}
 
-		for i, tg := range stableTGs {
+		for i, tg := range currentStableTGs {
 			tg := tg
 
 			var weight int
@@ -567,7 +565,7 @@ func Sync(config SyncInput) error {
 		canaryTGsWeight = 100 - desiredStableTGsWeight
 
 		var canaryVersion string
-		for _, tg := range latestTGs {
+		for _, tg := range desiredTGs {
 			for _, l := range labelKeys {
 				v, ok := tg.Labels[l]
 				if ok {
@@ -580,7 +578,7 @@ func Sync(config SyncInput) error {
 
 		updatedCanatyTGs := map[string]okrav1alpha1.ForwardTargetGroup{}
 
-		for i, tg := range latestTGs {
+		for i, tg := range desiredTGs {
 			var weight int
 
 			if canaryTGsWeight > 0 {
@@ -666,14 +664,14 @@ func Sync(config SyncInput) error {
 			// Otherwise it results in `Error: the server could not find the requested resource (delete analysisruns.argoproj.io)`
 			if err := runtimeClient.DeleteAllOf(ctx, o, client.InNamespace(cell.Namespace), &client.DeleteAllOfOptions{
 				ListOptions: client.ListOptions{
-					LabelSelector: ownedByCellLabelSelector,
+					LabelSelector: everythingOwnedByThisCell,
 				},
 			}); err != nil {
 				log.Printf("Failed deleting %Ts: %v", o, err)
 				return err
 			}
 
-			log.Printf("Deleted all %Ts with %s, if any", o, ownedByCellLabelSelector)
+			log.Printf("Deleted all %Ts with %s, if any", o, everythingOwnedByThisCell)
 		}
 	}
 
