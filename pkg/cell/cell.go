@@ -653,39 +653,26 @@ func Sync(config SyncInput) error {
 	log.Printf("Finishing reconcilation. desiredTargetTGsWeight=%v, passedAllCanarySteps=%v, anyStepFailed=%v, desiredVerIsBlocked=%v", desiredStableTGsWeight, passedAllCanarySteps, anyStepFailed, desiredVerIsBlocked)
 
 	if desiredStableTGsWeight == 0 && passedAllCanarySteps || anyStepFailed || desiredVerIsBlocked {
-		// Seems like we need to explicitly specify the namespace with client.InNamespace.
-		// Otherwise it results in `Error: the server could not find the requested resource (delete analysisruns.argoproj.io)`
-		if err := runtimeClient.DeleteAllOf(ctx, &rolloutsv1alpha1.AnalysisRun{}, client.InNamespace(cell.Namespace), &client.DeleteAllOfOptions{
-			ListOptions: client.ListOptions{
-				LabelSelector: ownedByCellLabelSelector,
-			},
-		}); err != nil {
-			log.Printf("Failed deleting analysis runs: %v", err)
-			return err
+		objects := []runtime.Object{
+			&rolloutsv1alpha1.AnalysisRun{},
+			&rolloutsv1alpha1.Experiment{},
+			&okrav1alpha1.Pause{},
 		}
 
-		log.Printf("Deleted all analysis runs with %s, if any", ownedByCellLabelSelector)
+		for _, o := range objects {
+			// Seems like we need to explicitly specify the namespace with client.InNamespace.
+			// Otherwise it results in `Error: the server could not find the requested resource (delete analysisruns.argoproj.io)`
+			if err := runtimeClient.DeleteAllOf(ctx, o, client.InNamespace(cell.Namespace), &client.DeleteAllOfOptions{
+				ListOptions: client.ListOptions{
+					LabelSelector: ownedByCellLabelSelector,
+				},
+			}); err != nil {
+				log.Printf("Failed deleting %Ts: %v", o, err)
+				return err
+			}
 
-		if err := runtimeClient.DeleteAllOf(ctx, &rolloutsv1alpha1.Experiment{}, client.InNamespace(cell.Namespace), &client.DeleteAllOfOptions{
-			ListOptions: client.ListOptions{
-				LabelSelector: ownedByCellLabelSelector,
-			},
-		}); err != nil {
-			log.Printf("Failed deleting experiments: %v", err)
-			return err
+			log.Printf("Deleted all %Ts with %s, if any", o, ownedByCellLabelSelector)
 		}
-
-		log.Printf("Deleted all experiments with %s, if any", ownedByCellLabelSelector)
-
-		if err := runtimeClient.DeleteAllOf(ctx, &okrav1alpha1.Pause{}, client.InNamespace(cell.Namespace), &client.DeleteAllOfOptions{
-			ListOptions: client.ListOptions{
-				LabelSelector: ownedByCellLabelSelector,
-			},
-		}); err != nil {
-			return err
-		}
-
-		log.Printf("Deleted all pauses with %s as completed, if any", ownedByCellLabelSelector)
 	}
 
 	return nil
