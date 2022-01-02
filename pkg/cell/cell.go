@@ -386,121 +386,25 @@ func Sync(config SyncInput) error {
 				}
 			}
 
+			ccr := cellComponentReconciler{
+				cell:          cell,
+				runtimeClient: runtimeClient,
+				scheme:        scheme,
+			}
+
 		STEPS:
 			for stepIndex, step := range canarySteps {
 				stepIndexStr := strconv.Itoa(stepIndex)
 
 				if step.Analysis != nil {
-					//
-					// Ensure that the previous analysis run has been successful, if any
-					//
-
-					var analysisRunList rolloutsv1alpha1.AnalysisRunList
-
-					labelSelector, err := labels.Parse(LabelKeyStepIndex + "=" + stepIndexStr)
+					r, err := ccr.reconcileAnalysisRun(ctx, stepIndexStr, step.Analysis)
 					if err != nil {
 						return err
-					}
-
-					if err := runtimeClient.List(ctx, &analysisRunList, &client.ListOptions{
-						LabelSelector: labelSelector,
-					}); err != nil {
-						return err
-					}
-
-					switch len(analysisRunList.Items) {
-					case 0:
-						tmpl := step.Analysis.Templates[0]
-
-						var args []rolloutsv1alpha1.Argument
-						argsMap := make(map[string]rolloutsv1alpha1.Argument)
-
-						var at rolloutsv1alpha1.AnalysisTemplate
-						nsName := types.NamespacedName{Namespace: cell.Namespace, Name: tmpl.TemplateName}
-						if err := runtimeClient.Get(ctx, nsName, &at); err != nil {
-							log.Printf("Failed getting analysistemplate %s: %v", nsName, err)
-							return err
-						}
-
-						for _, a := range at.Spec.Args {
-							argsMap[a.Name] = *a.DeepCopy()
-						}
-
-						for _, a := range step.Analysis.Args {
-							fromTemplate, ok := argsMap[a.Name]
-							if ok {
-								if a.Value != "" {
-									fromTemplate.Value = &a.Value
-								}
-								argsMap[a.Name] = fromTemplate
-							} else {
-								arg := rolloutsv1alpha1.Argument{
-									Name: a.Name,
-								}
-
-								if a.Value != "" {
-									arg.Value = &a.Value
-								}
-
-								argsMap[a.Name] = arg
-							}
-						}
-
-						for _, a := range argsMap {
-							args = append(args, a)
-						}
-
-						ar := rolloutsv1alpha1.AnalysisRun{
-							ObjectMeta: metav1.ObjectMeta{
-								Namespace: cell.Namespace,
-								Name:      fmt.Sprintf("%s-%d-%s", cell.Name, stepIndex, tmpl.TemplateName),
-								Labels: map[string]string{
-									LabelKeyStepIndex: stepIndexStr,
-									LabelKeyCell:      cell.Name,
-								},
-							},
-							Spec: rolloutsv1alpha1.AnalysisRunSpec{
-								Args:    args,
-								Metrics: at.Spec.Metrics,
-							},
-						}
-						if err := ctrl.SetControllerReference(&cell, &ar, scheme); err != nil {
-							log.Printf("Failed setting controller reference on %s/%s: %v", ar.Namespace, ar.Name, err)
-						}
-
-						if err := runtimeClient.Create(ctx, &ar); err != nil {
-							return err
-						}
-
-						log.Printf("Created analysisrun %s", ar.Name)
-
+					} else if r == StepInProgress {
 						break STEPS
-					case 1:
-						for _, ar := range analysisRunList.Items {
-							if ar.Status.Phase == rolloutsv1alpha1.AnalysisPhaseError {
-								log.Printf("AnalysisRun %s failed with error: %v", ar.Name, ar.Status.Message)
-
-								anyStepFailed = true
-								break STEPS
-							}
-
-							if ar.Status.Phase != rolloutsv1alpha1.AnalysisPhaseSuccessful {
-								if ar.Status.Phase == rolloutsv1alpha1.AnalysisPhaseFailed {
-									// TODO Suspend and mark it as permanent failure when analysis run timed out
-									log.Printf("AnalysisRun %s failed", ar.Name)
-
-									anyStepFailed = true
-									break STEPS
-								}
-
-								log.Printf("Waiting for analysisrun %s of %s to become %s", ar.Name, ar.Status.Phase, rolloutsv1alpha1.AnalysisPhaseSuccessful)
-
-								// We need to wait for this analysis run to succeed
-								break STEPS
-							}
-						}
-					default:
-						return errors.New("too many analysis runs")
+					} else if r == StepFailed {
+						anyStepFailed = true
+						break STEPS
 					}
 				} else if step.Experiment != nil {
 					//

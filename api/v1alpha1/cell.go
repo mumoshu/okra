@@ -104,7 +104,7 @@ type CellUpdateStrategyCanary struct {
 	// Steps define the order of phases to execute the canary deployment
 	// +optional
 	Steps []rolloutsv1alpha1.CanaryStep `json:"steps,omitempty" protobuf:"bytes,3,rep,name=steps"`
-	// Analysis runs a separate analysisRun while all the steps execute. This is intended to be a continuous validation of the new ReplicaSet
+	// Analysis runs a separate analysisRun while all the steps execute. This is intended to be a continuous validation of the new set of clusters
 	Analysis *rolloutsv1alpha1.RolloutAnalysisBackground `json:"analysis,omitempty" protobuf:"bytes,7,opt,name=analysis"`
 }
 
