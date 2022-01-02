@@ -472,8 +472,6 @@ func Sync(config SyncInput) error {
 			return fmt.Errorf("stable tgs weight cannot be less than 0: %v", desiredStableTGsWeight)
 		}
 
-		log.Printf("stable weight(%v): %d -> %d\n", currentStableTGsMaxVer, currentStableTGsWeight, desiredStableTGsWeight)
-
 		// Do update by step weight
 		var updatedTGs []okrav1alpha1.ForwardTargetGroup
 
@@ -517,7 +515,6 @@ func Sync(config SyncInput) error {
 				}
 			}
 		}
-		log.Printf("canary(%s) weight: %d -> %d\n", canaryVersion, currentCanaryTGsWeight, desiredCanaryTGsWeight)
 
 		updatedCanatyTGs := map[string]okrav1alpha1.ForwardTargetGroup{}
 
@@ -558,6 +555,13 @@ func Sync(config SyncInput) error {
 		desiredHash := sync.ComputeHash(albConfig.Spec)
 
 		if currentHash != desiredHash {
+			if currentStableTGsWeight != desiredStableTGsWeight {
+				log.Printf("Changing stable weight(%v): %d -> %d\n", currentStableTGsMaxVer, currentStableTGsWeight, desiredStableTGsWeight)
+			}
+			if currentCanaryTGsWeight != desiredCanaryTGsWeight {
+				log.Printf("Changing canary(%s) weight: %d -> %d\n", canaryVersion, currentCanaryTGsWeight, desiredCanaryTGsWeight)
+			}
+
 			metav1.SetMetaDataAnnotation(&albConfig.ObjectMeta, LabelKeyTemplateHash, desiredHash)
 
 			if err := runtimeClient.Update(ctx, &albConfig); err != nil {
@@ -566,7 +570,7 @@ func Sync(config SyncInput) error {
 
 			log.Printf("Updated target groups and weights to: %v\n", updated)
 		} else {
-			log.Printf("Skipped updating target groups")
+			log.Printf("No change detected on AWSApplicationLoadBalancerConfig and target group weights. Skipped updating.")
 		}
 	}
 
