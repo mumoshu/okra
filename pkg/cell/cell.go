@@ -354,7 +354,8 @@ func Sync(config SyncInput) error {
 	}
 
 	if !desiredVerIsBlocked {
-		canarySteps := cell.Spec.UpdateStrategy.Canary.Steps
+		canary := cell.Spec.UpdateStrategy.Canary
+		canarySteps := canary.Steps
 
 		passedAllCanarySteps = currentCanaryTGsWeight == 100
 
@@ -395,6 +396,32 @@ func Sync(config SyncInput) error {
 		STEPS:
 			for stepIndex, step := range canarySteps {
 				stepIndexStr := strconv.Itoa(stepIndex)
+
+				if a := canary.Analysis; a != nil {
+					// A background analysis works very much like
+					// Argo Rollouts Background Analysis as documented at
+					// https://argoproj.github.io/argo-rollouts/features/analysis/#background-analysis
+					// except that okra's works against clusters(backing e.g. AWSTargetGroups) instead of replicasets.
+
+					start := int32(0)
+					if a.StartingStep != nil {
+						start = *a.StartingStep
+					}
+
+					if int32(stepIndex) >= start {
+						r, err := ccr.reconcileAnalysisRun(ctx, "bg", &a.RolloutAnalysis)
+						if err != nil {
+							return err
+						} else if r == StepFailed {
+							anyStepFailed = true
+							break STEPS
+						}
+
+						// We accept both StepInProgress and StepPassed
+						// as a background analysis makes the cell degraded
+						// only if it failed.
+					}
+				}
 
 				if step.Analysis != nil {
 					r, err := ccr.reconcileAnalysisRun(ctx, stepIndexStr, step.Analysis)
