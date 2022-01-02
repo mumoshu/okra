@@ -6,6 +6,8 @@ spec:
   args:
   - name: service-name
   metrics:
+  # See the below API spec for all the available fields
+  # https://github.com/argoproj/argo-rollouts/blob/b3d50d1583835ea275ec96df47ec11b2acb9aa0b/pkg/apis/rollouts/v1alpha1/analysis_types.go#L78-L113
   - name: success-rate
     interval: 1m
     successCondition: result >= 0.95
