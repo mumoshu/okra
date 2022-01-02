@@ -10,8 +10,10 @@ spec:
     interval: 1m
     successCondition: result >= 0.95
     failureCondition: result <  0.90
-    failureLimit: 3
-    count: 2
+    failureLimit: 2
+    # This must be greater than failureLimit. Otherwise it fails with:
+    #   message: 'analysis spec invalid: metrics[0]: count must be >= failureLimit'
+    count: 3
     provider:
       datadog:
         interval: 1m
