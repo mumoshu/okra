@@ -216,7 +216,7 @@ func Sync(config SyncInput) error {
 
 	// Ensure that the previous analysis run has been successful, if any
 
-	var currentStableTGsWeight, currentCanaryTGsWeight, canaryTGsWeight int
+	var currentStableTGsWeight, currentCanaryTGsWeight, desiredCanaryTGsWeight int
 
 	var (
 		currentStableTGs []okrav1alpha1.ForwardTargetGroup
@@ -505,7 +505,7 @@ func Sync(config SyncInput) error {
 			updatedTGs = append(updatedTGs, tg)
 		}
 
-		canaryTGsWeight = 100 - desiredStableTGsWeight
+		desiredCanaryTGsWeight = 100 - desiredStableTGsWeight
 
 		var canaryVersion string
 		for _, tg := range desiredTGs {
@@ -517,18 +517,18 @@ func Sync(config SyncInput) error {
 				}
 			}
 		}
-		log.Printf("canary(%s) weight: %d -> %d\n", canaryVersion, currentCanaryTGsWeight, canaryTGsWeight)
+		log.Printf("canary(%s) weight: %d -> %d\n", canaryVersion, currentCanaryTGsWeight, desiredCanaryTGsWeight)
 
 		updatedCanatyTGs := map[string]okrav1alpha1.ForwardTargetGroup{}
 
 		for i, tg := range desiredTGs {
 			var weight int
 
-			if canaryTGsWeight > 0 {
-				weight = canaryTGsWeight / numLatestTGs
+			if desiredCanaryTGsWeight > 0 {
+				weight = desiredCanaryTGsWeight / numLatestTGs
 
 				if i == numLatestTGs-1 && numLatestTGs > 1 {
-					weight = canaryTGsWeight - (weight * (numLatestTGs - 1))
+					weight = desiredCanaryTGsWeight - (weight * (numLatestTGs - 1))
 				}
 			}
 
