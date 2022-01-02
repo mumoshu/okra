@@ -412,7 +412,7 @@ func Sync(config SyncInput) error {
 						r, err := ccr.reconcileAnalysisRun(ctx, "bg", &a.RolloutAnalysis)
 						if err != nil {
 							return err
-						} else if r == StepFailed {
+						} else if r == ComponentFailed {
 							anyStepFailed = true
 							break STEPS
 						}
@@ -427,9 +427,9 @@ func Sync(config SyncInput) error {
 					r, err := ccr.reconcileAnalysisRun(ctx, stepIndexStr, step.Analysis)
 					if err != nil {
 						return err
-					} else if r == StepInProgress {
+					} else if r == ComponentInProgress {
 						break STEPS
-					} else if r == StepFailed {
+					} else if r == ComponentFailed {
 						anyStepFailed = true
 						break STEPS
 					}

@@ -22,15 +22,15 @@ type cellComponentReconciler struct {
 	scheme        *runtime.Scheme
 }
 
-type stepReconcileResult int
+type componentReconcilationResult int
 
 const (
-	StepInProgress stepReconcileResult = iota
-	StepPassed
-	StepFailed
+	ComponentInProgress componentReconcilationResult = iota
+	ComponentPassed
+	ComponentFailed
 )
 
-func (s cellComponentReconciler) reconcileAnalysisRun(ctx context.Context, componentID string, analysis *rolloutsv1alpha1.RolloutAnalysis) (stepReconcileResult, error) {
+func (s cellComponentReconciler) reconcileAnalysisRun(ctx context.Context, componentID string, analysis *rolloutsv1alpha1.RolloutAnalysis) (componentReconcilationResult, error) {
 	cell := s.cell
 	runtimeClient := s.runtimeClient
 	scheme := s.scheme
@@ -43,13 +43,13 @@ func (s cellComponentReconciler) reconcileAnalysisRun(ctx context.Context, compo
 
 	labelSelector, err := labels.Parse(LabelKeyStepIndex + "=" + componentID)
 	if err != nil {
-		return StepInProgress, err
+		return ComponentInProgress, err
 	}
 
 	if err := runtimeClient.List(ctx, &analysisRunList, &client.ListOptions{
 		LabelSelector: labelSelector,
 	}); err != nil {
-		return StepInProgress, err
+		return ComponentInProgress, err
 	}
 
 	switch len(analysisRunList.Items) {
@@ -63,7 +63,7 @@ func (s cellComponentReconciler) reconcileAnalysisRun(ctx context.Context, compo
 		nsName := types.NamespacedName{Namespace: cell.Namespace, Name: tmpl.TemplateName}
 		if err := runtimeClient.Get(ctx, nsName, &at); err != nil {
 			log.Printf("Failed getting analysistemplate %s: %v", nsName, err)
-			return StepInProgress, err
+			return ComponentInProgress, err
 		}
 
 		for _, a := range at.Spec.Args {
@@ -113,12 +113,12 @@ func (s cellComponentReconciler) reconcileAnalysisRun(ctx context.Context, compo
 		}
 
 		if err := runtimeClient.Create(ctx, &ar); err != nil {
-			return StepInProgress, err
+			return ComponentInProgress, err
 		}
 
 		log.Printf("Created analysisrun %s", ar.Name)
 
-		return StepInProgress, nil
+		return ComponentInProgress, nil
 	case 1:
 		ar := analysisRunList.Items[0]
 
@@ -126,17 +126,17 @@ func (s cellComponentReconciler) reconcileAnalysisRun(ctx context.Context, compo
 		case rolloutsv1alpha1.AnalysisPhaseError, rolloutsv1alpha1.AnalysisPhaseFailed:
 			log.Printf("AnalysisRun %s failed with error: %v", ar.Name, ar.Status.Message)
 
-			return StepFailed, nil
+			return ComponentFailed, nil
 		case rolloutsv1alpha1.AnalysisPhaseSuccessful:
 		default:
 			log.Printf("Waiting for analysisrun %s of %s to become %s", ar.Name, ar.Status.Phase, rolloutsv1alpha1.AnalysisPhaseSuccessful)
 
 			// We need to wait for this analysis run to succeed
-			return StepInProgress, nil
+			return ComponentInProgress, nil
 		}
 	default:
-		return StepInProgress, errors.New("too many analysis runs")
+		return ComponentInProgress, errors.New("too many analysis runs")
 	}
 
-	return StepPassed, nil
+	return ComponentPassed, nil
 }
