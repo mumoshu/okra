@@ -22,16 +22,21 @@ func main() {
 		Use: "eks",
 	}
 
-	var clusterName, roleARN string
+	var (
+		clusterName, roleARN, region string
+	)
+
 	getTokenCmd := &cobra.Command{
 		Use: "get-token",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			err := eksGetToken(os.Stdout, clusterName, roleARN)
+			err := eksGetToken(os.Stdout, clusterName, roleARN, region)
 			return err
 		},
 	}
 	getTokenCmd.Flags().StringVar(&clusterName, "cluster-name", "", "Specify the name of the Amazon EKS  cluster to create a token for.")
 	getTokenCmd.Flags().StringVar(&roleARN, "role-arn", "", "Assume this role for credentials when signing the token.")
+
+	cmd.PersistentFlags().StringVar(&region, "region", "", "The region to use. Overrides config/env settings.")
 
 	eksCmd.AddCommand(getTokenCmd)
 	cmd.AddCommand(eksCmd)
@@ -47,8 +52,8 @@ func main() {
 //
 // See https://github.com/aws/aws-cli/blob/develop/awscli/customizations/eks/get_token.py for the aws-cli implementation
 // for reference.
-func eksGetToken(out io.Writer, clusterID, roleARAN string) error {
-	sess := awsclicompat.NewSession("", "")
+func eksGetToken(out io.Writer, clusterID, roleARAN, region string) error {
+	sess := awsclicompat.NewSession(region, "")
 
 	gen, err := token.NewGenerator(true, false)
 	if err != nil {
