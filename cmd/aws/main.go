@@ -34,7 +34,7 @@ func main() {
 		},
 	}
 	getTokenCmd.Flags().StringVar(&clusterName, "cluster-name", "", "Specify the name of the Amazon EKS  cluster to create a token for.")
-	getTokenCmd.Flags().StringVar(&roleARN, "role-arn", "", "Assume this role for credentials when signing the token.")
+	getTokenCmd.Flags().StringVar(&roleARN, "role", "", "Assume this role for credentials when signing the token.")
 
 	cmd.PersistentFlags().StringVar(&region, "region", "", "The region to use. Overrides config/env settings.")
 
