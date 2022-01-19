@@ -113,11 +113,12 @@ type CellUpdateStrategyBlueGreen struct {
 
 // CellStatus defines the observed state of ClusterSet
 type CellStatus struct {
-	Clusters     ClusterSetStatusClusters `json:"clusters"`
-	LastSyncTime metav1.Time              `json:"lastSyncTime"`
-	Phase        string                   `json:"phase"`
-	Reason       string                   `json:"reason"`
-	Message      string                   `json:"message"`
+	DesiredVersion string                   `json:"desiredVersion"`
+	Clusters       ClusterSetStatusClusters `json:"clusters"`
+	LastSyncTime   metav1.Time              `json:"lastSyncTime"`
+	Phase          string                   `json:"phase"`
+	Reason         string                   `json:"reason"`
+	Message        string                   `json:"message"`
 }
 
 // +kubebuilder:object:root=true

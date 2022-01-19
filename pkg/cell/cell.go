@@ -333,6 +333,11 @@ func Sync(config SyncInput) error {
 		return nil
 	}
 
+	// Now, we need to update cell.status
+	// so that values in it can be used from within field paths
+	// contained in experiment and analysis step args.
+	cell.Status.DesiredVersion = desiredVer.String()
+
 	canary := cell.Spec.UpdateStrategy.Canary
 	canarySteps := canary.Steps
 

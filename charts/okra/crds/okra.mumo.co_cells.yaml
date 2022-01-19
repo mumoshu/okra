@@ -140,7 +140,7 @@ spec:
                       analysis:
                         description: Analysis runs a separate analysisRun while all
                           the steps execute. This is intended to be a continuous validation
-                          of the new ReplicaSet
+                          of the new set of clusters
                         properties:
                           args:
                             description: Args the arguments that will be added to
@@ -516,6 +516,8 @@ spec:
                       type: string
                     type: array
                 type: object
+              desiredVersion:
+                type: string
               lastSyncTime:
                 format: date-time
                 type: string
@@ -527,6 +529,7 @@ spec:
                 type: string
             required:
             - clusters
+            - desiredVersion
             - lastSyncTime
             - message
             - phase

@@ -107,6 +107,12 @@ func (r *CellReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
+	if err := r.Client.Status().Update(ctx, &cellResource); err != nil {
+		log.Error(err, "Updating Cell Status")
+
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	}
+
 	r.Recorder.Event(&cellResource, corev1.EventTypeNormal, "SyncFinished", fmt.Sprintf("Sync finished on '%s'", cellResource.Name))
 
 	return ctrl.Result{}, nil

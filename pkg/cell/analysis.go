@@ -113,6 +113,12 @@ func (s cellComponentReconciler) reconcileAnalysisRun(ctx context.Context, compo
 
 				if a.Value != "" {
 					arg.Value = &a.Value
+				} else if a.ValueFrom != nil && arg.ValueFrom.FieldRef != nil {
+					v, err := extractValueFromCell(&cell, a.ValueFrom.FieldRef.FieldPath)
+					if err != nil {
+						return ComponentFailed, err
+					}
+					arg.Value = &v
 				}
 
 				argsMap[a.Name] = arg
@@ -227,10 +233,23 @@ func (s cellComponentReconciler) reconcileExperiment(ctx context.Context, compon
 		for _, a := range exTemplate.Analyses {
 			var args []rolloutsv1alpha1.Argument
 			for _, arg := range a.Args {
+				var (
+					value *string
+				)
+
+				if arg.Value != "" {
+					value = &arg.Value
+				} else if arg.ValueFrom != nil && arg.ValueFrom.FieldRef != nil {
+					v, err := extractValueFromCell(&cell, arg.ValueFrom.FieldRef.FieldPath)
+					if err != nil {
+						return ComponentFailed, err
+					}
+					value = &v
+				}
+
 				args = append(args, rolloutsv1alpha1.Argument{
-					Name: arg.Name,
-					// TODO
-					Value: &arg.Value,
+					Name:  arg.Name,
+					Value: value,
 				})
 			}
 			analyses = append(analyses, rolloutsv1alpha1.ExperimentAnalysisTemplateRef{
