@@ -52,7 +52,7 @@ func (s cellComponentReconciler) componentLabels(componentID, templateHash strin
 	return r
 }
 
-func (s cellComponentReconciler) reconcileAnalysisRun(ctx context.Context, componentID string, analysis *rolloutsv1alpha1.RolloutAnalysis) (componentReconcilationResult, error) {
+func (s cellComponentReconciler) reconcileAnalysisRun(ctx context.Context, componentID string, analysis *rolloutsv1alpha1.RolloutAnalysis, validateT func(rolloutsv1alpha1.AnalysisTemplate) error) (componentReconcilationResult, error) {
 	cell := s.cell
 	runtimeClient := s.runtimeClient
 	scheme := s.scheme
@@ -86,6 +86,13 @@ func (s cellComponentReconciler) reconcileAnalysisRun(ctx context.Context, compo
 		if err := runtimeClient.Get(ctx, nsName, &at); err != nil {
 			log.Printf("Failed getting analysistemplate %s: %v", nsName, err)
 			return ComponentInProgress, err
+		}
+
+		if validateT != nil {
+			// Validation
+			if err := validateT(at); err != nil {
+				return ComponentFailed, err
+			}
 		}
 
 		for _, a := range at.Spec.Args {

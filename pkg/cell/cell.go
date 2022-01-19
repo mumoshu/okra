@@ -398,7 +398,7 @@ func Sync(config SyncInput) error {
 				}
 
 				if int32(stepIndex) >= start {
-					r, err := ccr.reconcileAnalysisRun(ctx, "bg", &a.RolloutAnalysis)
+					r, err := ccr.reconcileAnalysisRun(ctx, "bg", &a.RolloutAnalysis, nil)
 					if err != nil {
 						return err
 					} else if r == ComponentFailed {
@@ -418,7 +418,14 @@ func Sync(config SyncInput) error {
 			)
 
 			if step.Analysis != nil {
-				r, err = ccr.reconcileAnalysisRun(ctx, stepIndexStr, step.Analysis)
+				r, err = ccr.reconcileAnalysisRun(ctx, stepIndexStr, step.Analysis, func(at rolloutsv1alpha1.AnalysisTemplate) error {
+					for _, m := range at.Spec.Metrics {
+						if d, _ := m.Interval.Duration(); d > 0 && m.Count == nil {
+							return fmt.Errorf("analysistemplate %s: metric %s: step analysis should have non-zero count", at.Name, m.Name)
+						}
+					}
+					return nil
+				})
 			} else if step.Experiment != nil {
 				r, err = ccr.reconcileExperiment(ctx, stepIndexStr, step.Experiment)
 			} else if step.SetWeight != nil {
