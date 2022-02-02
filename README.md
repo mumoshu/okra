@@ -493,8 +493,10 @@ In the below example, we have an analysis step that creates an analaysis run fro
 
 The `desiredVersion` status field contains the desired version number(obtained from e.g. EKS cluster tags and AWS target group tags) of the cluster repliacs being rolled out, so that you can analyze based on metrics specific to the newly rolled out clusters.
 
-```
-piVersion: okra.mumo.co/v1alpha1
+A typical cell whose one of canary steps is a `analysis` would look like the below. Notice the `fieldPath: status.desiredVersion` used to dynamically generate the `cluster-version` analysis run argument.
+
+```yaml
+apiVersion: okra.mumo.co/v1alpha1
 kind: Cell
 metadata:
   name: web
@@ -514,7 +516,79 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: status.desiredVersion
+```
 
+Similarly, an experiment step can inculde a `fieldPath` to have a dynaically generate argument:
+
+```yaml
+apiVersion: okra.mumo.co/v1alpha1
+kind: Cell
+metadata:
+  name: web
+spec:
+  updateStrategy:
+    type: Canary
+    canary:
+      steps:
+      # ...
+      - experiment:
+          duration: 5m
+          templates:
+          - name: wy
+            # references the wy replicaset defined below
+            specRef: wy
+            # This should default to 1 as defined by Argo Rollouts but
+            # the author observed that it doesn't work in practice.
+            # 
+            replicas: 1
+          analyses:
+          - name: success-rate-dd
+            templateName: success-rate-dd
+            args:
+            - name: service-name
+              value: wy-serve
+            - name: cluster-version
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.desiredVersion
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  labels:
+    app: wy
+  name: wy
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: wy
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: wy
+    spec:
+      containers:
+      - image: mumoshu/wy:latest
+        name: wy
+        ports:
+        - containerPort: 8080
+        resources: {}
+        args:
+        - repeat
+        - get
+        - -forever
+        - -interval=5s
+        - -url=http://localhost:8080
+        - -argocd-cluster-secret=cdk1
+        - -service=wy-serve
+        - -remote-port=8080
+        - -local-port=8080
+        envFrom:
+        - secretRef:
+            name: wy
+            optional: true
 ```
 
 ## Notes
