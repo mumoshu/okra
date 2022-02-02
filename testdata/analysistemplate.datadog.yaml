@@ -17,6 +17,21 @@ spec:
     #   message: 'analysis spec invalid: metrics[0]: count must be >= failureLimit'
     count: 3
     provider:
+      # Note on Argo Rollouts' Datadog provider setup:
+      #
+      # Assuming Argo Rollouts is installed onto argo-rollouts namespace,
+      # The following secret needs to exist in order for datadog provider to function at all.
+      #
+      # apiVersion: v1
+      # kind: Secret
+      # metadata:
+      #   name: datadog
+      #   namespace: argo-rollouts
+      # type: Opaque
+      # stringData:
+      #   address: https://api.datadoghq.com
+      #   api-key: REDACTED
+      #   app-key: REDACTED
       datadog:
         interval: 1m
         query: |
