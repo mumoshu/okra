@@ -591,6 +591,16 @@ spec:
             optional: true
 ```
 
+#### Datadog
+
+As explained earlier, `Okra` relies on Argo Rollouts `Datadog` support.
+That is, you define a Okra `Cell`, so that the okra controller creates either Argo Rollouts `AnalysisRun` or `Experiment`, which in turn queries Datadog metrics with [the "Query timeseries points" API](https://docs.datadoghq.com/api/latest/metrics/#query-timeseries-points).
+
+If you're curious how you'd instrument your app so that it's metrices cna be used from Okra, you'd better get started by reading e.g. [Mapping Prometheus Metrics to Datadog Metrics](https://docs.datadoghq.com/integrations/guide/prometheus-metrics/).
+
+Before authoring a complex `Cell` spec including Analysis and Expriment, the author recommends you to try browsing Datadog dashboard, or use simpler tool like `curl` to query metries.
+After you've done so, start tinkering with Okra, so that when it break you can be extra sure when and where it broke!
+
 ## Notes
 
 It is inteded to be deployed onto a "control-plane" cluster to where you usually deploy applications like ArgoCD.
