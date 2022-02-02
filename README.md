@@ -98,6 +98,7 @@ It detects new `target groups`, and live migrate traffic by hot-swaping old targ
   - [Auto-Register Target Groups with AWSTargetGroupSet](#auto-register-target-groups-with-awstargetgroupset)
 - [Create Cell](#create-cell)
 - [Create and Rollout New Clusters](#create-and-rollout-new-clusters)
+- [Analysises and Experiments](#analysises-and-experiments)
 
 ### Install Okra
 
@@ -481,6 +482,40 @@ Need a Kubernetes version upgrade? Create new Kubernetes clusters with the new K
 Need a host OS upgrade? Create new clusters with nodes with the new version of the host OS and watch `Cell` rolls out the new clusters.
 
 And you can do the same on every kind of cluster-wide change! Enjoy running your ephemeral Kubernetes clusters.
+
+### Analysises and Experiments
+
+`Okra` provides almost the same features for Argo Rollouts [Analysises](https://argoproj.github.io/argo-rollouts/features/analysis/) and [Experiments](https://argoproj.github.io/argo-rollouts/features/experiment/).
+
+A major difference between Argo Rollouts' and Okra's is that Okra's provides access to the `status.desiredVersion` field in an analysis and experiment query argument, so that you can analyze and experiment your canary based on metrics specific to the version of your clusters.
+
+In the below example, we have an analysis step that creates an analaysis run from a analysis template named `success-rate`, whose argument `cluster-version` is set to the value obtained from `cell.status.desiredVersion`.
+
+The `desiredVersion` status field contains the desired version number(obtained from e.g. EKS cluster tags and AWS target group tags) of the cluster repliacs being rolled out, so that you can analyze based on metrics specific to the newly rolled out clusters.
+
+```
+piVersion: okra.mumo.co/v1alpha1
+kind: Cell
+metadata:
+  name: web
+spec:
+  updateStrategy:
+    type: Canary
+    canary:
+      steps:
+      # ...
+      - analysis:
+          templates:
+          - templateName: success-rate
+          args:
+          - name: service-name
+            value: guestbook-svc.default.svc.cluster.local
+          - name: cluster-version
+            valueFrom:
+              fieldRef:
+                fieldPath: status.desiredVersion
+
+```
 
 ## Notes
 
