@@ -49,7 +49,7 @@ builds:
   - amd64
   - arm64
 dockers:
-- image_templates: ["ghcr.io/mumoshu/okra/{{ .ProjectName }}:{{ .Version }}-amd64"]
+- image_templates: ["ghcr.io/mumoshu/okra/{{ .ProjectName }}-amd64:{{ .Version }}"]
   dockerfile: Dockerfile.goreleaser
   use: buildx
   build_flag_templates:
@@ -62,7 +62,7 @@ dockers:
   - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
   - --label=org.opencontainers.image.revision={{ .FullCommit }}
   - --label=org.opencontainers.image.licenses=MIT
-- image_templates: ["ghcr.io/mumoshu/okra/{{ .ProjectName }}:{{ .Version }}-arm64v8"]
+- image_templates: ["ghcr.io/mumoshu/okra/{{ .ProjectName }}-arm64v8:{{ .Version }}"]
   goarch: arm64
   dockerfile: Dockerfile.goreleaser
   use: buildx
@@ -79,9 +79,9 @@ dockers:
 docker_manifests:
 - name_template: ghcr.io/mumoshu/{{ .ProjectName }}:{{ .Version }}
   image_templates:
-  - ghcr.io/mumoshu/okra/{{ .ProjectName }}:{{ .Version }}-amd64
-  - ghcr.io/mumoshu/okra/{{ .ProjectName }}:{{ .Version }}-arm64v8
+  - ghcr.io/mumoshu/okra/{{ .ProjectName }}-amd64:{{ .Version }}
+  - ghcr.io/mumoshu/okra/{{ .ProjectName }}-arm64v8:{{ .Version }}
 - name_template: ghcr.io/mumoshu/{{ .ProjectName }}:latest
   image_templates:
-  - ghcr.io/mumoshu/okra/{{ .ProjectName }}:{{ .Version }}-amd64
-  - ghcr.io/mumoshu/okra/{{ .ProjectName }}:{{ .Version }}-arm64v8
+  - ghcr.io/mumoshu/okra/{{ .ProjectName }}-amd64:{{ .Version }}
+  - ghcr.io/mumoshu/okra/{{ .ProjectName }}-arm64v8:{{ .Version }}
