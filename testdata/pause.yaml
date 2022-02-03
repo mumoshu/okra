@@ -1,0 +1,5 @@
+apiVersion: okra.mumo.co/v1alpha1
+kind: Pause
+metadata:
+    name: pause1
+spec:

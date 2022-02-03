@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  creationTimestamp: null
+  labels:
+    app: wy
+  name: wy
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: wy
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: wy
+    spec:
+      containers:
+      - image: mumoshu/wy:latest
+        name: wy
+        ports:
+        - containerPort: 8080
+        resources: {}
+        args:
+        - repeat
+        - get
+        - -forever
+        - -interval=5s
+        - -url=http://localhost:8080
+        - -argocd-cluster-secret=cdk1
+        - -service=wy-serve
+        - -remote-port=8080
+        - -local-port=8080
+        envFrom:
+        - secretRef:
+            name: wy
+            optional: true
+---
+apiVersion: okra.mumo.co/v1alpha1
+kind: Cell
+metadata:
+  name: web
+spec:
+  ingress:
+    type: AWSApplicationLoadBalancer
+    awsApplicationLoadBalancer:
+      listener:
+        rule:
+          forward: {}
+          hosts:
+          - example.com
+          priority: 10
+      listenerARN: ${AWS_ALB_LISTENER_ARN}
+      targetGroupSelector:
+        matchLabels:
+          role: web
+        versionLabels:
+        - okra.mumo.co/version
+  version: "${CELL_VERSION}"
+  # replicas: N
+  updateStrategy:
+    type: Canary
+    # Canary uses the set of target groups whose labels contains
+    # `selector.MatchLabels` and the size of the set is equal or greater than N.
+    # When there are two or more such sets exist, the one that has the largest version is used.
+    canary:
+      # See https://argoproj.github.io/argo-rollouts/features/analysis/#background-analysis
+      steps:
+      - setWeight: 10
+      - pause: {duration: 1m}
+      - experiment:
+          duration: 5m
+          templates:
+          - name: wy
+            # references the wy replicaset defined above
+            specRef: wy
+            # This should default to 1 as defined by Argo Rollouts but
+            # the author observed that it doesn't work in practice.
+            # 
+            replicas: 1
+          analyses:
+          - name: success-rate-dd
+            templateName: success-rate-dd
+            args:
+            - name: service-name
+              value: wy-serve
+      - setWeight: 20
+      - analysis:
+          templates:
+          - templateName: success-rate-dd
+          args:
+          - name: service-name
+            value: wy-serve
