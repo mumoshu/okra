@@ -1,0 +1,14 @@
+# Use distroless as minimal base image to package the manager binary
+# Refer to https://github.com/GoogleContainerTools/distroless for more details
+FROM gcr.io/distroless/static:nonroot
+
+WORKDIR /
+
+ADD okrad /bin/okrad
+ADD okra /bin/okra
+ADD okractl /bin/okractl
+ADD aws /bin/aws
+
+USER nonroot:nonroot
+
+ENTRYPOINT ["/okrad"]
