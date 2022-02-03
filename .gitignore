@@ -1,3 +1,6 @@
 .envrc
 .testenv
 bin/
+.vscode/
+dist/
+.hack/
