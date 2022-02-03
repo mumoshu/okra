@@ -10,5 +10,3 @@ ADD okractl /bin/okractl
 ADD aws /bin/aws
 
 USER nonroot:nonroot
-
-ENTRYPOINT ["/okrad"]
