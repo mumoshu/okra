@@ -591,12 +591,15 @@ spec:
             optional: true
 ```
 
-#### Datadog
+#### How it integrates with Datadog
 
 As explained earlier, `Okra` relies on Argo Rollouts `Datadog` support.
-That is, you define a Okra `Cell`, so that the okra controller creates either Argo Rollouts `AnalysisRun` or `Experiment`, which in turn queries Datadog metrics with [the "Query timeseries points" API](https://docs.datadoghq.com/api/latest/metrics/#query-timeseries-points).
 
-If you're curious how you'd instrument your app so that it's metrices cna be used from Okra, you'd better get started by reading e.g. [Mapping Prometheus Metrics to Datadog Metrics](https://docs.datadoghq.com/integrations/guide/prometheus-metrics/).
+It works like this- you define a Okra `Cell`, so that the okra controller creates either Argo Rollouts `AnalysisRun` or `Experiment`, which in turn instruct Argo Rollouts to periodically query Datadog metrics with [the "Query timeseries points" API](https://docs.datadoghq.com/api/latest/metrics/#query-timeseries-points), update the AnalysisRun or Experiment's statuses to be either `Successful` or `Failed`. The final step is the okra controller gets notified about the status update and react to it by reconciling the parent `Cell` resource, incrementing the canary step.
+
+The only part specific to Datadog is that it queries Datadog, which has been implemented in https://github.com/argoproj/argo-rollouts/pull/705 in Argo Rollouts.
+
+If you're curious how you'd instrument your app so that it's metrics cna be used from Okra, you'd better get started by reading e.g. [Mapping Prometheus Metrics to Datadog Metrics](https://docs.datadoghq.com/integrations/guide/prometheus-metrics/). There's nothing specific to Okra here.
 
 Before authoring a complex `Cell` spec including Analysis and Expriment, the author recommends you to try browsing Datadog dashboard, or use simpler tool like `curl` to query metries.
 After you've done so, start tinkering with Okra, so that when it break you can be extra sure when and where it broke!
